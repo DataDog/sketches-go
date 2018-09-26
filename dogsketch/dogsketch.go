@@ -48,6 +48,19 @@ func (s *DogSketch) Add(c *Config, v float64) {
 
 // Merge another sketch (with the same binLimit and gamma) in place.
 func (s *DogSketch) Merge(c *Config, o *DogSketch) {
+	if o.count == 0 {
+		return
+	}
+	if s.count == 0 {
+		*s.store = o.store.makeCopy()
+		s.count = o.count
+		s.sum = o.sum
+		s.avg = o.avg
+		s.min = o.min
+		s.max = o.max
+		return
+	}
+
 	// Merge the bins
 	s.store.merge(c, o.store)
 
@@ -86,8 +99,9 @@ func (s *DogSketch) Quantile(c *Config, q float64) float64 {
 			} else if key > 0 {
 				key -= c.offset
 				return 0.5 * (1 + c.gamma) * c.powGamma(key-1)
+			} else {
+				return 0
 			}
-
 		}
 	}
 	return s.max
