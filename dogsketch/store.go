@@ -5,24 +5,26 @@ import (
 )
 
 type Store struct {
-	bins   []uint64
-	count  int64
-	minKey int
-	maxKey int
+	bins     []uint64
+	count    int64
+	minKey   int
+	maxKey   int
+	binLimit int
 }
 
-func NewStore(c *Config) *Store {
+func NewStore(binLimit int) *Store {
 	// Start with a small number of bins that will grow as needed
-	// up to c.binLimit
-	nBins := c.binLimit / 16
+	// up to binLimit
+	nBins := binLimit / 16
 	if nBins < 1 {
 		nBins = 1
 	}
 	return &Store{
-		bins:   make([]uint64, nBins),
-		count:  0,
-		minKey: 0,
-		maxKey: 0,
+		bins:     make([]uint64, nBins),
+		count:    0,
+		minKey:   0,
+		maxKey:   0,
+		binLimit: binLimit,
 	}
 }
 
@@ -30,15 +32,15 @@ func (s *Store) length() int {
 	return len(s.bins)
 }
 
-func (s *Store) add(c *Config, key int) {
+func (s *Store) add(key int) {
 	if s.count == 0 {
 		s.maxKey = key
 		s.minKey = key - len(s.bins) + 1
 	}
 	if key < s.minKey {
-		s.growLeft(c, key)
+		s.growLeft(key)
 	} else if key > s.maxKey {
-		s.growRight(c, key)
+		s.growRight(key)
 	}
 	idx := key - s.minKey
 	if idx < 0 {
@@ -48,36 +50,36 @@ func (s *Store) add(c *Config, key int) {
 	s.count++
 }
 
-func (s *Store) growLeft(c *Config, key int) {
-	if s.minKey < key || len(s.bins) >= c.binLimit {
+func (s *Store) growLeft(key int) {
+	if s.minKey < key || len(s.bins) >= s.binLimit {
 		return
 	}
-	if s.maxKey-key >= c.binLimit {
-		s.bins = append(make([]uint64, c.binLimit-s.maxKey+s.minKey-1), s.bins...)
-		s.minKey = s.maxKey - c.binLimit + 1
+	if s.maxKey-key >= s.binLimit {
+		s.bins = append(make([]uint64, s.binLimit-s.maxKey+s.minKey-1), s.bins...)
+		s.minKey = s.maxKey - s.binLimit + 1
 	} else {
 		s.bins = append(make([]uint64, s.minKey-key), s.bins...)
 		s.minKey = key
 	}
 }
 
-func (s *Store) growRight(c *Config, key int) {
+func (s *Store) growRight(key int) {
 	if s.maxKey > key {
 		return
 	}
-	if key-s.maxKey >= c.binLimit {
-		s.bins = make([]uint64, c.binLimit)
+	if key-s.maxKey >= s.binLimit {
+		s.bins = make([]uint64, s.binLimit)
 		s.maxKey = key
-		s.minKey = key - c.binLimit + 1
+		s.minKey = key - s.binLimit + 1
 		s.bins[0] = uint64(s.count)
-	} else if key-s.minKey >= c.binLimit {
+	} else if key-s.minKey >= s.binLimit {
 		var n uint64
-		for i := s.minKey; i <= key-c.binLimit && i <= s.maxKey; i++ {
+		for i := s.minKey; i <= key-s.binLimit && i <= s.maxKey; i++ {
 			n += s.bins[i-s.minKey]
 		}
-		s.bins = append(s.bins[key-s.minKey-c.binLimit+1:], make([]uint64, key-s.maxKey)...)
+		s.bins = append(s.bins[key-s.minKey-s.binLimit+1:], make([]uint64, key-s.maxKey)...)
 		s.maxKey = key
-		s.minKey = key - c.binLimit + 1
+		s.minKey = key - s.binLimit + 1
 		s.bins[0] += n
 	} else {
 		s.bins = append(s.bins, make([]uint64, key-s.maxKey)...)
@@ -85,20 +87,20 @@ func (s *Store) growRight(c *Config, key int) {
 	}
 }
 
-func (s *Store) compress(c *Config) {
-	if len(s.bins) <= c.binLimit {
+func (s *Store) compress() {
+	if len(s.bins) <= s.binLimit {
 		return
 	}
 	var n uint64
-	for i := 0; i <= s.maxKey-s.minKey-c.binLimit; i++ {
+	for i := 0; i <= s.maxKey-s.minKey-s.binLimit; i++ {
 		n += s.bins[i]
 	}
-	s.bins = s.bins[s.maxKey-s.minKey-c.binLimit+1:]
-	s.minKey = s.maxKey - c.binLimit + 1
+	s.bins = s.bins[s.maxKey-s.minKey-s.binLimit+1:]
+	s.minKey = s.maxKey - s.binLimit + 1
 	s.bins[0] += n
 }
 
-func (s *Store) merge(c *Config, o *Store) {
+func (s *Store) merge(o *Store) {
 	if len(o.bins) == 0 {
 		return
 	}
@@ -119,7 +121,7 @@ func (s *Store) merge(c *Config, o *Store) {
 	s.maxKey = maxKey
 	s.count += o.count
 
-	s.compress(c)
+	s.compress()
 }
 
 func max(x, y int) int {

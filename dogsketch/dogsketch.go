@@ -9,30 +9,32 @@ import (
 
 // DogSketch is a contiguous (non-sparse) implementation of DogSketch.
 type DogSketch struct {
-	store *Store
-	min   float64
-	max   float64
-	count int64
-	sum   float64
-	avg   float64
+	config *Config
+	store  *Store
+	min    float64
+	max    float64
+	count  int64
+	sum    float64
+	avg    float64
 }
 
 // NewDogSketch allocates a new DogSketch summary with relative accuracy alpha.
 func NewDogSketch(c *Config) *DogSketch {
 	return &DogSketch{
-		store: NewStore(c),
-		min:   math.Inf(1),
-		max:   math.Inf(-1),
-		count: 0,
-		sum:   0,
-		avg:   0,
+		config: c,
+		store:  NewStore(c.binLimit),
+		min:    math.Inf(1),
+		max:    math.Inf(-1),
+		count:  0,
+		sum:    0,
+		avg:    0,
 	}
 }
 
 // Add a new value to the summary.
-func (s *DogSketch) Add(c *Config, v float64) {
-	key := c.Key(v)
-	s.store.add(c, key)
+func (s *DogSketch) Add(v float64) {
+	key := s.config.Key(v)
+	s.store.add(key)
 
 	// Keep track of summary stats
 	if v < s.min {
@@ -47,7 +49,7 @@ func (s *DogSketch) Add(c *Config, v float64) {
 }
 
 // Merge another sketch (with the same binLimit and gamma) in place.
-func (s *DogSketch) Merge(c *Config, o *DogSketch) {
+func (s *DogSketch) Merge(o *DogSketch) {
 	if o.count == 0 {
 		return
 	}
@@ -62,7 +64,7 @@ func (s *DogSketch) Merge(c *Config, o *DogSketch) {
 	}
 
 	// Merge the bins
-	s.store.merge(c, o.store)
+	s.store.merge(o.store)
 
 	// Merge summary stats
 	s.count += o.count
@@ -77,7 +79,7 @@ func (s *DogSketch) Merge(c *Config, o *DogSketch) {
 }
 
 // Quantile returns the estimate of the element at q.
-func (s *DogSketch) Quantile(c *Config, q float64) float64 {
+func (s *DogSketch) Quantile(q float64) float64 {
 	switch {
 	case q < 0, q > 1, s.count == 0:
 		return math.NaN()
@@ -94,11 +96,11 @@ func (s *DogSketch) Quantile(c *Config, q float64) float64 {
 		if n >= rank {
 			key := i + s.store.minKey
 			if key < 0 {
-				key += c.offset
-				return -0.5 * (1 + c.gamma) * c.powGamma(-key)
+				key += s.config.offset
+				return -0.5 * (1 + s.config.gamma) * s.config.powGamma(-key)
 			} else if key > 0 {
-				key -= c.offset
-				return 0.5 * (1 + c.gamma) * c.powGamma(key-1)
+				key -= s.config.offset
+				return 0.5 * (1 + s.config.gamma) * s.config.powGamma(key-1)
 			} else {
 				return 0
 			}
