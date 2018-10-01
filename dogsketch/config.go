@@ -45,7 +45,7 @@ func NewConfig(alpha float64, maxBins int, minValue float64) *Config {
 
 func (c *Config) Key(v float64) int {
 	if v < -c.minValue {
-		return -int(math.Floor(c.logGamma(-v))) - c.offset
+		return -int(math.Ceil(c.logGamma(-v))) - c.offset
 	} else if v > c.minValue {
 		return int(math.Ceil(c.logGamma(v))) + c.offset
 	} else {

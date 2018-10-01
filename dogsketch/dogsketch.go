@@ -97,7 +97,7 @@ func (s *DogSketch) Quantile(q float64) float64 {
 			key := i + s.store.minKey
 			if key < 0 {
 				key += s.config.offset
-				return -0.5 * (1 + s.config.gamma) * s.config.powGamma(-key)
+				return -0.5 * (1 + s.config.gamma) * s.config.powGamma(-key-1)
 			} else if key > 0 {
 				key -= s.config.offset
 				return 0.5 * (1 + s.config.gamma) * s.config.powGamma(key-1)
