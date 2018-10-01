@@ -156,14 +156,8 @@ func (s GKArray) Quantile(q float64) float64 {
 		return math.NaN()
 	}
 
-	// This shouldn't happen but checking just in case.
 	if len(s.Incoming) > 0 {
 		s = s.compressWithIncoming(nil)
-	}
-
-	// Interpolate the quantile when there are only a few values.
-	if s.Count < int64(1/EPSILON) {
-		return s.interpolatedQuantile(q)
 	}
 
 	rank := int64(q*float64(s.Count-1) + 1)
@@ -172,8 +166,7 @@ func (s GKArray) Quantile(q float64) float64 {
 	i := 0
 	for ; i < len(s.Entries); i++ {
 		gSum += int64(s.Entries[i].G)
-		// mininum rank is 0 but gSum starts from 1, hence the -1.
-		if gSum+int64(s.Entries[i].Delta)-1 > rank+spread {
+		if gSum+int64(s.Entries[i].Delta) > rank+spread {
 			break
 		}
 	}
@@ -181,24 +174,6 @@ func (s GKArray) Quantile(q float64) float64 {
 		return s.Min
 	}
 	return s.Entries[i-1].V
-}
-
-// interpolatedQuantile returns an estimate of the element at quantile q,
-// but interpolates between the lower and higher elements when Count is
-// less than 1/EPSILON.
-// Again, the incoming buffer is empty during the quantile query phase.
-func (s GKArray) interpolatedQuantile(q float64) float64 {
-	rank := q * float64(s.Count-1)
-	indexBelow := int64(rank)
-	indexAbove := indexBelow + 1
-	if indexAbove > s.Count-1 {
-		indexAbove = s.Count - 1
-	}
-	weightAbove := rank - float64(indexBelow)
-	weightBelow := 1.0 - weightAbove
-
-	// When Count is less than 1/EPSILON, all the entries will have G = 1, Delta = 0.
-	return weightBelow*s.Entries[indexBelow].V + weightAbove*s.Entries[indexAbove].V
 }
 
 // Quantiles accepts a sorted slice of quantile values and returns the epsilon estimates of
@@ -212,22 +187,8 @@ func (s GKArray) Quantiles(qValues []float64) []float64 {
 		return quantiles
 	}
 
-	// This shouldn't happen but checking just in case.
 	if len(s.Incoming) > 0 {
 		s = s.compressWithIncoming(nil)
-	}
-
-	// When there are only a few values just call interpolatedQuantile
-	// for each quantile.
-	if s.Count < int64(1/EPSILON) {
-		for _, q := range qValues {
-			if q < 0 || q > 1 {
-				quantiles = append(quantiles, math.NaN())
-				continue
-			}
-			quantiles = append(quantiles, s.interpolatedQuantile(q))
-		}
-		return quantiles
 	}
 
 	// If the qValues are not sorted, just call Quantile for each qValue
@@ -251,7 +212,7 @@ func (s GKArray) Quantiles(qValues []float64) []float64 {
 			quantiles = append(quantiles, math.NaN())
 		}
 		// Loop since adjacent ranks could be the same.
-		for ; j < len(qValues) && gSum+int64(s.Entries[i].Delta)-1 > int64(qValues[j]*float64(s.Count-1)+1)+spread; j++ {
+		for ; j < len(qValues) && gSum+int64(s.Entries[i].Delta) > int64(qValues[j]*float64(s.Count-1)+1)+spread; j++ {
 			if i == 0 {
 				quantiles = append(quantiles, s.Min)
 			} else {
