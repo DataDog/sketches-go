@@ -25,7 +25,7 @@ Find the quantiles to within epsilon of rank.
 ```
 quantiles := sketch.Quantiles([0.5, 0.75, 0.9, 1])
 ```
-Merge another GKArray into sketch.
+Merge another `GKArray` into `sketch`.
 ```
 another_sketch = gkarray.NewGKArray()
 for i := 0; i < 500; i++ {
@@ -67,7 +67,7 @@ for i, q := range qs {
   quantiles[i] = sketch.Quantile(q)
 }
 ```
-Merge another DogSketch into sketch.
+Merge another `DogSketch` into `sketch`.
 ```
 another_sketch := dogsketch.DogSketch(c)
 for i := 0; i < 500; i++ {
