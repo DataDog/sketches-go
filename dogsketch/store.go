@@ -6,38 +6,43 @@
 package dogsketch
 
 import (
+	"bytes"
+	"fmt"
 	"reflect"
 )
 
+const (
+	initialNumBins = 128
+	growLeftBy     = 128
+)
+
+// Store is a dynamically growing contiguous (non-sparse) implementation of
+// the buckets of DogSketch
 type Store struct {
-	bins     []uint64
-	count    int64
-	minKey   int
-	maxKey   int
-	binLimit int
+	bins       []int64
+	count      int64
+	minKey     int
+	maxKey     int
+	maxNumBins int
 }
 
-func NewStore(binLimit int) *Store {
+func NewStore(maxNumBins int) *Store {
 	// Start with a small number of bins that will grow as needed
-	// up to binLimit
-	nBins := binLimit / 16
-	if nBins < 1 {
-		nBins = 1
-	}
+	// up to maxNumBins
 	return &Store{
-		bins:     make([]uint64, nBins),
-		count:    0,
-		minKey:   0,
-		maxKey:   0,
-		binLimit: binLimit,
+		bins:       make([]int64, initialNumBins),
+		count:      0,
+		minKey:     0,
+		maxKey:     0,
+		maxNumBins: maxNumBins,
 	}
 }
 
-func (s *Store) length() int {
+func (s *Store) Length() int {
 	return len(s.bins)
 }
 
-func (s *Store) add(key int) {
+func (s *Store) Add(key int) {
 	if s.count == 0 {
 		s.maxKey = key
 		s.minKey = key - len(s.bins) + 1
@@ -55,78 +60,111 @@ func (s *Store) add(key int) {
 	s.count++
 }
 
+// Return the key for the value at rank
+func (s *Store) KeyAtRank(rank int) int {
+	var n int
+	for i, b := range s.bins {
+		n += int(b)
+		if n >= rank {
+			return i + s.minKey
+		}
+	}
+	return s.maxKey
+}
+
 func (s *Store) growLeft(key int) {
-	if s.minKey < key || len(s.bins) >= s.binLimit {
+	if s.minKey < key || len(s.bins) >= s.maxNumBins {
 		return
 	}
-	if s.maxKey-key >= s.binLimit {
-		s.bins = append(make([]uint64, s.binLimit-s.maxKey+s.minKey-1), s.bins...)
-		s.minKey = s.maxKey - s.binLimit + 1
+
+	var minKey int
+	if s.maxKey-key >= s.maxNumBins {
+		minKey = s.maxKey - s.maxNumBins + 1
 	} else {
-		s.bins = append(make([]uint64, s.minKey-key), s.bins...)
-		s.minKey = key
+		// Expand bins to the left in chunks of growLeftBy bins.
+		minKey = s.minKey
+		for minKey > key {
+			minKey -= growLeftBy
+		}
 	}
+	tmpBins := make([]int64, s.maxKey-minKey+1)
+	copy(tmpBins[s.minKey-minKey:], s.bins)
+	s.bins = tmpBins
+	s.minKey = minKey
 }
 
 func (s *Store) growRight(key int) {
 	if s.maxKey > key {
 		return
 	}
-	if key-s.maxKey >= s.binLimit {
-		s.bins = make([]uint64, s.binLimit)
+	if key-s.maxKey >= s.maxNumBins {
+		s.bins = make([]int64, s.maxNumBins)
 		s.maxKey = key
-		s.minKey = key - s.binLimit + 1
-		s.bins[0] = uint64(s.count)
-	} else if key-s.minKey >= s.binLimit {
-		var n uint64
-		for i := s.minKey; i <= key-s.binLimit && i <= s.maxKey; i++ {
+		s.minKey = key - s.maxNumBins + 1
+		s.bins[0] = int64(s.count)
+	} else if key-s.minKey >= s.maxNumBins {
+		minKey := key - s.maxNumBins + 1
+		var n int64
+		for i := s.minKey; i < minKey && i <= s.maxKey; i++ {
 			n += s.bins[i-s.minKey]
 		}
-		s.bins = append(s.bins[key-s.minKey-s.binLimit+1:], make([]uint64, key-s.maxKey)...)
+		if len(s.bins) < s.maxNumBins {
+			tmpBins := make([]int64, s.maxNumBins)
+			copy(tmpBins, s.bins[minKey-s.minKey:])
+			s.bins = tmpBins
+		} else {
+			copy(s.bins, s.bins[minKey-s.minKey:])
+			for i := s.maxKey - minKey + 1; i < s.maxNumBins; i++ {
+				s.bins[i] = 0.0
+			}
+		}
 		s.maxKey = key
-		s.minKey = key - s.binLimit + 1
+		s.minKey = minKey
 		s.bins[0] += n
 	} else {
-		s.bins = append(s.bins, make([]uint64, key-s.maxKey)...)
+		tmpBins := make([]int64, key-s.minKey+1)
+		copy(tmpBins, s.bins)
+		s.bins = tmpBins
 		s.maxKey = key
 	}
 }
 
-func (s *Store) compress() {
-	if len(s.bins) <= s.binLimit {
-		return
-	}
-	var n uint64
-	for i := 0; i <= s.maxKey-s.minKey-s.binLimit; i++ {
-		n += s.bins[i]
-	}
-	s.bins = s.bins[s.maxKey-s.minKey-s.binLimit+1:]
-	s.minKey = s.maxKey - s.binLimit + 1
-	s.bins[0] += n
-}
-
-func (s *Store) merge(o *Store) {
+func (s *Store) Merge(o *Store) {
 	if len(o.bins) == 0 {
 		return
 	}
 	if len(s.bins) == 0 {
-		*s = o.makeCopy()
+		s.Copy(o)
 		return
 	}
 
-	minKey := min(s.minKey, o.minKey)
-	maxKey := max(s.maxKey, o.maxKey)
-	tmpBins := make([]uint64, maxKey-minKey+1)
-	copy(tmpBins[s.minKey-minKey:], s.bins)
-	for i := 0; i < len(o.bins); i++ {
-		tmpBins[i+o.minKey-minKey] += o.bins[i]
+	if s.maxKey > o.maxKey {
+		if o.minKey < s.minKey {
+			s.growLeft(o.minKey)
+		}
+		for i := max(o.minKey, s.minKey); i <= o.maxKey; i++ {
+			s.bins[i-s.minKey] += o.bins[i-o.minKey]
+		}
+		var n int64
+		for i := o.minKey; i < s.minKey; i++ {
+			n += o.bins[i-o.minKey]
+		}
+		s.bins[0] += n
+	} else {
+		if o.minKey < s.minKey {
+			tmpBins := make([]int64, len(o.bins))
+			copy(tmpBins, o.bins)
+			for i := s.minKey; i <= s.maxKey; i++ {
+				tmpBins[i-o.minKey] += s.bins[i-s.minKey]
+			}
+			s.bins = tmpBins
+		} else {
+			s.growRight(o.maxKey)
+			for i := o.minKey; i <= o.maxKey; i++ {
+				s.bins[i-s.minKey] += o.bins[i-o.minKey]
+			}
+		}
 	}
-	s.bins = tmpBins
-	s.minKey = minKey
-	s.maxKey = maxKey
-	s.count += o.count
-
-	s.compress()
 }
 
 func max(x, y int) int {
@@ -143,19 +181,25 @@ func min(x, y int) int {
 	return y
 }
 
-func (s *Store) makeCopy() Store {
-	bins := make([]uint64, len(s.bins))
-	for i := 0; i < len(s.bins); i++ {
-		bins[i] = s.bins[i]
-	}
-	return Store{
-		bins:   bins,
-		minKey: s.minKey,
-		maxKey: s.maxKey,
-		count:  s.count,
-	}
+func (s *Store) Copy(o *Store) {
+	s.bins = make([]int64, len(o.bins))
+	copy(s.bins, o.bins)
+	s.minKey = o.minKey
+	s.maxKey = o.maxKey
+	s.count = o.count
 }
 
-func (s *Store) size() int {
+func (s *Store) String() string {
+	var buffer bytes.Buffer
+	buffer.WriteString("{")
+	for i := 0; i < len(s.bins); i++ {
+		key := i + s.minKey
+		buffer.WriteString(fmt.Sprintf("%d: %d, ", key, s.bins[i]))
+	}
+	buffer.WriteString(fmt.Sprintf(", minKey: %d, maxKey: %d}", s.minKey, s.maxKey))
+	return buffer.String()
+}
+
+func (s *Store) Size() int {
 	return int(reflect.TypeOf(*s).Size()) + cap(s.bins)*int(reflect.TypeOf(s.bins).Elem().Size())
 }

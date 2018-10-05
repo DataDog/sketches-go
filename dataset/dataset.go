@@ -7,13 +7,8 @@ package dataset
 
 import (
 	"math"
-	"math/rand"
 	"sort"
 )
-
-type Generator interface {
-	Generate() float64
-}
 
 type Dataset struct {
 	Values []float64
@@ -29,15 +24,13 @@ func (d *Dataset) Add(v float64) {
 	d.sorted = false
 }
 
+// Quantile returns the lower quantile of the dataset
 func (d *Dataset) Quantile(q float64) float64 {
-	if q < 0 || q > 1 {
-		panic("Quantile out of bounds")
-	}
-	d.Sort()
-	if d.Count == 0 {
+	if q < 0 || q > 1 || d.Count == 0 {
 		return math.NaN()
 	}
 
+	d.Sort()
 	rank := q * float64(d.Count-1)
 	return d.Values[int64(rank)]
 }
@@ -82,35 +75,3 @@ func (d *Dataset) Sort() {
 	sort.Float64s(d.Values)
 	d.sorted = true
 }
-
-// Constant stream
-type Constant struct{ constant float64 }
-
-func NewConstant(constant float64) *Constant { return &Constant{constant: constant} }
-
-func (s *Constant) Generate() float64 { return s.constant }
-
-// Uniform distribution
-type Uniform struct{ currentVal float64 }
-
-func NewUniform() *Uniform { return &Uniform{0} }
-
-func (g *Uniform) Generate() float64 {
-	value := g.currentVal
-	g.currentVal++
-	return value
-}
-
-// Normal distribution
-type Normal struct{ mean, stddev float64 }
-
-func NewNormal(mean, stddev float64) *Normal { return &Normal{mean: mean, stddev: stddev} }
-
-func (g *Normal) Generate() float64 { return rand.NormFloat64()*g.stddev + g.mean }
-
-// Exponential distribution
-type Exponential struct{ rate float64 }
-
-func NewExponential(rate float64) *Exponential { return &Exponential{rate: rate} }
-
-func (g *Exponential) Generate() float64 { return rand.ExpFloat64() / g.rate }

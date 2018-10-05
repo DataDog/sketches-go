@@ -7,20 +7,21 @@ package dogsketch
 
 import (
 	"math"
+	"reflect"
 )
 
 const (
-	defaultMaxBins  = 2048
-	defaultAlpha    = 0.01
-	defaultMinValue = 1.0e-9
+	defaultMaxNumBins = 2048
+	defaultAlpha      = 0.01
+	defaultMinValue   = 1.0e-9
 )
 
 type Config struct {
-	binLimit int
-	gamma    float64
-	gamma_ln float64
-	minValue float64
-	offset   int
+	maxNumBins int
+	gamma      float64
+	gammaLn    float64
+	minValue   float64
+	offset     int
 }
 
 // Config contains an offset for the bin keys which ensures that keys for positive
@@ -28,21 +29,21 @@ type Config struct {
 // keys for negative numbers are less than or equal to -1.
 func NewDefaultConfig() *Config {
 	c := &Config{
-		binLimit: defaultMaxBins,
-		gamma:    1 + 2*defaultAlpha,
-		gamma_ln: math.Log1p(2 * defaultAlpha),
-		minValue: defaultMinValue,
+		maxNumBins: defaultMaxNumBins,
+		gamma:      1 + 2*defaultAlpha,
+		gammaLn:    math.Log1p(2 * defaultAlpha),
+		minValue:   defaultMinValue,
 	}
 	c.offset = -int(c.logGamma(c.minValue)) + 1
 	return c
 }
 
-func NewConfig(alpha float64, maxBins int, minValue float64) *Config {
+func NewConfig(alpha float64, maxNumBins int, minValue float64) *Config {
 	c := &Config{
-		binLimit: maxBins,
-		gamma:    1 + 2*alpha,
-		gamma_ln: math.Log1p(2 * alpha),
-		minValue: minValue,
+		maxNumBins: maxNumBins,
+		gamma:      1 + 2*alpha,
+		gammaLn:    math.Log1p(2 * alpha),
+		minValue:   minValue,
 	}
 	c.offset = -int(c.logGamma(c.minValue)) + 1
 	return c
@@ -59,9 +60,13 @@ func (c *Config) Key(v float64) int {
 }
 
 func (c *Config) logGamma(v float64) float64 {
-	return math.Log(v) / c.gamma_ln
+	return math.Log(v) / c.gammaLn
 }
 
 func (c *Config) powGamma(k int) float64 {
-	return math.Pow(c.gamma, float64(k))
+	return math.Exp(float64(k) * c.gammaLn)
+}
+
+func (c *Config) Size() int {
+	return int(reflect.TypeOf(*c).Size())
 }

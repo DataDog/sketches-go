@@ -41,7 +41,6 @@ func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DogSketch, n in
 	}
 	assert.Equal(d.Min(), g.min)
 	assert.Equal(d.Max(), g.max)
-	assert.InEpsilon(d.Avg(), g.avg, eps)
 	assert.InEpsilon(d.Sum(), g.sum, eps)
 	assert.Equal(d.Count, g.count)
 }
@@ -61,10 +60,10 @@ func TestConstant(t *testing.T) {
 	}
 }
 
-func TestUniform(t *testing.T) {
+func TestLinear(t *testing.T) {
 	for _, n := range testSizes {
-		uniformGenerator := dataset.NewUniform()
-		EvaluateSketch(t, n, uniformGenerator)
+		linearGenerator := dataset.NewLinear()
+		EvaluateSketch(t, n, linearGenerator)
 	}
 }
 
@@ -72,6 +71,13 @@ func TestNormal(t *testing.T) {
 	for _, n := range testSizes {
 		normalGenerator := dataset.NewNormal(35, 1)
 		EvaluateSketch(t, n, normalGenerator)
+	}
+}
+
+func TestLognormal(t *testing.T) {
+	for _, n := range testSizes {
+		lognormalGenerator := dataset.NewLognormal(0, -2)
+		EvaluateSketch(t, n, lognormalGenerator)
 	}
 }
 
