@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2018 Datadog, Inc.
 
-package dogsketch
+package ddsketch
 
 import (
 	"testing"
@@ -23,7 +23,7 @@ var testSizes = []int{3, 5, 10, 100, 1000}
 
 func EvaluateSketch(t *testing.T, n int, gen dataset.Generator) {
 	c := NewConfig(testAlpha, testMaxBins, testMinValue)
-	g := NewDogSketch(c)
+	g := NewDDSketch(c)
 	d := dataset.NewDataset()
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
@@ -33,7 +33,7 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator) {
 	AssertSketchesAccurate(t, d, g, n, c)
 }
 
-func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DogSketch, n int, c *Config) {
+func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DDSketch, n int, c *Config) {
 	assert := assert.New(t)
 	eps := float64(1.0e-6)
 	for _, q := range testQuantiles {
@@ -49,7 +49,7 @@ func TestConstant(t *testing.T) {
 	for _, n := range testSizes {
 		constantGenerator := dataset.NewConstant(42)
 		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g := NewDogSketch(c)
+		g := NewDDSketch(c)
 		d := dataset.NewDataset()
 		for i := 0; i < n; i++ {
 			value := constantGenerator.Generate()
@@ -91,14 +91,14 @@ func TestMergeNormal(t *testing.T) {
 	for _, n := range testSizes {
 		d := dataset.NewDataset()
 		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g1 := NewDogSketch(c)
+		g1 := NewDDSketch(c)
 		generator1 := dataset.NewNormal(35, 1)
 		for i := 0; i < n; i += 3 {
 			value := generator1.Generate()
 			g1.Add(value)
 			d.Add(value)
 		}
-		g2 := NewDogSketch(c)
+		g2 := NewDDSketch(c)
 		generator2 := dataset.NewNormal(50, 2)
 		for i := 1; i < n; i += 3 {
 			value := generator2.Generate()
@@ -107,7 +107,7 @@ func TestMergeNormal(t *testing.T) {
 		}
 		g1.Merge(g2)
 
-		g3 := NewDogSketch(c)
+		g3 := NewDDSketch(c)
 		generator3 := dataset.NewNormal(40, 0.5)
 		for i := 2; i < n; i += 3 {
 			value := generator3.Generate()
@@ -124,8 +124,8 @@ func TestMergeEmpty(t *testing.T) {
 		d := dataset.NewDataset()
 		// Merge a non-empty sketch to an empty sketch
 		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g1 := NewDogSketch(c)
-		g2 := NewDogSketch(c)
+		g1 := NewDDSketch(c)
+		g2 := NewDDSketch(c)
 		generator := dataset.NewExponential(5)
 		for i := 0; i < n; i++ {
 			value := generator.Generate()
@@ -136,7 +136,7 @@ func TestMergeEmpty(t *testing.T) {
 		AssertSketchesAccurate(t, d, g1, n, c)
 
 		// Merge an empty sketch to a non-empty sketch
-		g3 := NewDogSketch(c)
+		g3 := NewDDSketch(c)
 		g2.Merge(g3)
 		AssertSketchesAccurate(t, d, g2, n, c)
 	}
@@ -146,14 +146,14 @@ func TestMergeMixed(t *testing.T) {
 	for _, n := range testSizes {
 		d := dataset.NewDataset()
 		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g1 := NewDogSketch(c)
+		g1 := NewDDSketch(c)
 		generator1 := dataset.NewNormal(100, 1)
 		for i := 0; i < n; i += 3 {
 			value := generator1.Generate()
 			g1.Add(value)
 			d.Add(value)
 		}
-		g2 := NewDogSketch(c)
+		g2 := NewDDSketch(c)
 		generator2 := dataset.NewExponential(5)
 		for i := 1; i < n; i += 3 {
 			value := generator2.Generate()
@@ -162,7 +162,7 @@ func TestMergeMixed(t *testing.T) {
 		}
 		g1.Merge(g2)
 
-		g3 := NewDogSketch(c)
+		g3 := NewDDSketch(c)
 		generator3 := dataset.NewExponential(0.1)
 		for i := 2; i < n; i += 3 {
 			value := generator3.Generate()
@@ -184,7 +184,7 @@ func TestConsistentQuantile(t *testing.T) {
 	fuzzer := fuzz.New()
 	c := NewConfig(testAlpha, testMaxBins, testMinValue)
 	for i := 0; i < nTests; i++ {
-		s := NewDogSketch(c)
+		s := NewDDSketch(c)
 		vfuzzer.Fuzz(&vals)
 		fuzzer.Fuzz(&q)
 		for _, v := range vals {

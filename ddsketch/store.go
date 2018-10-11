@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2018 Datadog, Inc.
 
-package dogsketch
+package ddsketch
 
 import (
 	"bytes"
@@ -158,6 +158,8 @@ func (s *Store) Merge(o *Store) {
 				tmpBins[i-o.minKey] += s.bins[i-s.minKey]
 			}
 			s.bins = tmpBins
+			s.maxKey = o.maxKey
+			s.minKey = o.minKey
 		} else {
 			s.growRight(o.maxKey)
 			for i := o.minKey; i <= o.maxKey; i++ {
@@ -187,6 +189,18 @@ func (s *Store) Copy(o *Store) {
 	s.minKey = o.minKey
 	s.maxKey = o.maxKey
 	s.count = o.count
+}
+
+func (s *Store) MakeCopy() *Store {
+	bins := make([]int64, len(s.bins))
+	copy(bins, s.bins)
+	return &Store{
+		bins:       bins,
+		count:      s.count,
+		minKey:     s.minKey,
+		maxKey:     s.maxKey,
+		maxNumBins: s.maxNumBins,
+	}
 }
 
 func (s *Store) String() string {

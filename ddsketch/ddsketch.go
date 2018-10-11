@@ -2,7 +2,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2018 Datadog, Inc.
 
-package dogsketch
+package ddsketch
 
 import (
 	"bytes"
@@ -11,8 +11,8 @@ import (
 	"reflect"
 )
 
-// DogSketch is an implementation of DogSketch.
-type DogSketch struct {
+// DDSketch is an implementation of DDSketch.
+type DDSketch struct {
 	config *Config
 	store  *Store
 	min    float64
@@ -21,9 +21,9 @@ type DogSketch struct {
 	sum    float64
 }
 
-// NewDogSketch allocates a new DogSketch summary with relative accuracy alpha.
-func NewDogSketch(c *Config) *DogSketch {
-	return &DogSketch{
+// NewDDSketch allocates a new DDSketch summary with relative accuracy alpha.
+func NewDDSketch(c *Config) *DDSketch {
+	return &DDSketch{
 		config: c,
 		store:  NewStore(c.maxNumBins),
 		min:    math.Inf(1),
@@ -32,7 +32,7 @@ func NewDogSketch(c *Config) *DogSketch {
 }
 
 // Add a new value to the summary.
-func (s *DogSketch) Add(v float64) {
+func (s *DDSketch) Add(v float64) {
 	key := s.config.Key(v)
 	s.store.Add(key)
 
@@ -48,7 +48,7 @@ func (s *DogSketch) Add(v float64) {
 }
 
 // Quantile returns the estimate of the element at q.
-func (s *DogSketch) Quantile(q float64) float64 {
+func (s *DDSketch) Quantile(q float64) float64 {
 	if q < 0 || q > 1 || s.count == 0 {
 		return math.NaN()
 	}
@@ -81,7 +81,7 @@ func (s *DogSketch) Quantile(q float64) float64 {
 }
 
 // Merge another sketch (with the same maxNumBins and gamma) in place.
-func (s *DogSketch) Merge(o *DogSketch) {
+func (s *DDSketch) Merge(o *DDSketch) {
 	if o.count == 0 {
 		return
 	}
@@ -108,19 +108,19 @@ func (s *DogSketch) Merge(o *DogSketch) {
 	}
 }
 
-func (s *DogSketch) Sum() float64 {
+func (s *DDSketch) Sum() float64 {
 	return s.sum
 }
 
-func (s *DogSketch) Avg() float64 {
+func (s *DDSketch) Avg() float64 {
 	return s.sum / float64(s.count)
 }
 
-func (s *DogSketch) Count() int64 {
+func (s *DDSketch) Count() int64 {
 	return s.count
 }
 
-func (s *DogSketch) MakeCopy() *DogSketch {
+func (s *DDSketch) MakeCopy() *DDSketch {
 	store := s.store.MakeCopy()
 	config := &Config{
 		maxNumBins: s.config.maxNumBins,
@@ -129,7 +129,7 @@ func (s *DogSketch) MakeCopy() *DogSketch {
 		minValue:   s.config.minValue,
 		offset:     s.config.offset,
 	}
-	return &DogSketch{
+	return &DDSketch{
 		config: config,
 		store:  store,
 		min:    s.min,
@@ -139,7 +139,7 @@ func (s *DogSketch) MakeCopy() *DogSketch {
 	}
 }
 
-func (s *DogSketch) String() string {
+func (s *DDSketch) String() string {
 	var buffer bytes.Buffer
 	buffer.WriteString(fmt.Sprintf("offset: %d ", s.config.offset))
 	buffer.WriteString(fmt.Sprintf("count: %d ", s.count))
@@ -150,6 +150,6 @@ func (s *DogSketch) String() string {
 	return buffer.String()
 }
 
-func (s *DogSketch) MemorySize() int {
+func (s *DDSketch) MemorySize() int {
 	return int(reflect.TypeOf(*s).Size()) + s.store.Size() + s.config.Size()
 }
