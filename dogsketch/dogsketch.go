@@ -120,8 +120,28 @@ func (s *DogSketch) Count() int64 {
 	return s.count
 }
 
+func (s *DogSketch) MakeCopy() *DogSketch {
+	store := s.store.MakeCopy()
+	config := &Config{
+		maxNumBins: s.config.maxNumBins,
+		gamma:      s.config.gamma,
+		gammaLn:    s.config.gammaLn,
+		minValue:   s.config.minValue,
+		offset:     s.config.offset,
+	}
+	return &DogSketch{
+		config: config,
+		store:  store,
+		min:    s.min,
+		max:    s.max,
+		count:  s.count,
+		sum:    s.sum,
+	}
+}
+
 func (s *DogSketch) String() string {
 	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("offset: %d ", s.config.offset))
 	buffer.WriteString(fmt.Sprintf("count: %d ", s.count))
 	buffer.WriteString(fmt.Sprintf("sum: %g ", s.sum))
 	buffer.WriteString(fmt.Sprintf("min: %g ", s.min))

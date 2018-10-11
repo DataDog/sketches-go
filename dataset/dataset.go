@@ -39,11 +39,11 @@ func (d *Dataset) Rank(v float64) int64 {
 	d.Sort()
 	i := int64(0)
 	for ; i < d.Count; i++ {
-		if d.Values[i] > v {
-			break
+		if d.Values[i] >= v {
+			return i + 1
 		}
 	}
-	return i
+	return d.Count
 }
 
 func (d *Dataset) Min() float64 {
