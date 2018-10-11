@@ -13,9 +13,7 @@ import (
 	"sort"
 )
 
-// EPSILON represents the accuracy of the sketch.
-// Once Merge() is called, the sketch has a 2*EPSILON rank-accuracy guarantee.
-const EPSILON float64 = 0.005
+const DefaultEpsilon float64 = 0.01
 
 // Entry is an element of the sketch. For the definition of g and delta, see the original paper
 // http://infolab.stanford.edu/~datar/courses/cs361a/papers/quantiles.pdf
@@ -33,7 +31,10 @@ func (slice Entries) Less(i, j int) bool { return slice[i].v < slice[j].v }
 func (slice Entries) Swap(i, j int)      { slice[i], slice[j] = slice[j], slice[i] }
 
 // GKArray is a version of GK with a buffer for the incoming values.
+// epsilon is the accuracy of the sketch.
+// Once Merge() is called, the sketch has a 2*epsilon rank-accuracy guarantee.
 type GKArray struct {
+	epsilon float64
 	// the last item of Entries will always be the max inserted value
 	entries  Entries   `json:"entries"`
 	incoming []float64 `json:"buf"`
@@ -44,13 +45,18 @@ type GKArray struct {
 }
 
 // NewGKArray allocates a new GKArray summary.
-func NewGKArray() *GKArray {
+func NewGKArray(epsilon float64) *GKArray {
 	return &GKArray{
+		epsilon: epsilon,
 		// preallocate the incoming array for better insert throughput (5% faster)
-		incoming: make([]float64, 0, int(1/EPSILON)+1),
+		incoming: make([]float64, 0, int(1/epsilon)+1),
 		min:      math.Inf(1),
 		max:      math.Inf(-1),
 	}
+}
+
+func NewDefaultGKArray() *GKArray {
+	return NewGKArray(DefaultEpsilon)
 }
 
 // Add a new value to the summary.
@@ -64,7 +70,7 @@ func (s *GKArray) Add(v float64) {
 	if v > s.max {
 		s.max = v
 	}
-	if s.count%(int64(1/EPSILON)+1) == 0 {
+	if s.count%(int64(1/s.epsilon)+1) == 0 {
 		s.compressWithIncoming(nil)
 	}
 }
@@ -80,7 +86,7 @@ func (s *GKArray) Quantile(q float64) float64 {
 	}
 
 	rank := int64(q*float64(s.count-1) + 1)
-	spread := int64(EPSILON * float64(s.count-1))
+	spread := int64(s.epsilon * float64(s.count-1))
 	gSum := int64(0)
 	i := 0
 	for ; i < len(s.entries); i++ {
@@ -112,6 +118,9 @@ func (s *GKArray) Quantile(q float64) float64 {
 // we can actually directly append them to s.incoming as new entries where g = n. This is possible because the
 // values of n will never violate the condition n <= int(s.eps * (s.count+o.count-1)).
 func (s *GKArray) Merge(o *GKArray) {
+	if o.epsilon != s.epsilon {
+		panic("Can't merge two GKArrays with different epsilonss!")
+	}
 	if o.count == 0 {
 		return
 	}
@@ -120,7 +129,7 @@ func (s *GKArray) Merge(o *GKArray) {
 		return
 	}
 	o.compressWithIncoming(nil)
-	spread := uint32(EPSILON * float64(o.count-1))
+	spread := uint32(o.epsilon * float64(o.count-1))
 
 	incomingEntries := make([]Entry, 0, len(o.entries)+1)
 	if n := o.entries[0].g + o.entries[0].delta - spread - 1; n > 0 {
@@ -146,6 +155,10 @@ func (s *GKArray) Merge(o *GKArray) {
 	s.compressWithIncoming(incomingEntries)
 }
 
+func (s *GKArray) Compress() {
+	s.compressWithIncoming(nil)
+}
+
 // compressWithIncoming merges an optional incomingEntries and incoming buffer into
 // entries and compresses.
 func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
@@ -166,7 +179,7 @@ func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
 	copy(entriesCopy, s.entries)
 	s.entries = entriesCopy
 
-	removalThreshold := 2 * uint32(EPSILON*float64(s.count-1))
+	removalThreshold := 2 * uint32(s.epsilon*float64(s.count-1))
 	merged := make([]Entry, 0, len(s.entries)+len(incomingEntries)/3)
 
 	// TODO[Charles]: The compression algo might not be optimal. We need to revisit it if we need to improve space
@@ -215,7 +228,7 @@ func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
 	}
 	s.entries = merged
 	// allocate incoming
-	s.incoming = make([]float64, 0, int(1/EPSILON)+1)
+	s.incoming = make([]float64, 0, int(1/s.epsilon)+1)
 }
 
 func (s *GKArray) Sum() float64 {
@@ -242,6 +255,22 @@ func (s *GKArray) Copy(o *GKArray) {
 	s.max = o.max
 	s.count = o.count
 	s.sum = o.sum
+}
+
+func (s *GKArray) MakeCopy() *GKArray {
+	entries := make([]Entry, len(s.entries))
+	copy(entries, s.entries)
+	incoming := make([]float64, len(s.incoming), cap(s.incoming))
+	copy(incoming, s.incoming)
+	return &GKArray{
+		epsilon:  s.epsilon,
+		min:      s.min,
+		max:      s.max,
+		count:    s.count,
+		sum:      s.sum,
+		entries:  entries,
+		incoming: incoming,
+	}
 }
 
 func (s *GKArray) String() string {
