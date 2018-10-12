@@ -167,6 +167,7 @@ func (s *Store) Merge(o *Store) {
 			}
 		}
 	}
+	s.count += o.count
 }
 
 func max(x, y int) int {
