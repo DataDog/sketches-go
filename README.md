@@ -4,7 +4,7 @@ This repo contains Go implementations of the distributed quantile sketch algorit
 
 ## GKArray
 
-GKArray provides a sketch with a rank error guarantee of espilon (without merge) or 2\*epsilon (with merge). The default value of epsilon is 0.005.
+GKArray provides a sketch with a rank error guarantee of espilon (without merge) or 2\*epsilon (with merge). The default value of epsilon is 0.01.
 
 ### Usage
 ```
@@ -40,16 +40,16 @@ sketch = sketch.Merge(another_sketch)
 ```
 Now the quantiles will be accurate to within 2\*epsilon of rank.
 
-## DogSketch
+## DDSketch
 
-DogSketch has a relative error guarantee of alpha for any quantile q in [0, 1] that is not too small. Concretely, the q-quantile will be accurate up to a relative error of alpha as long as it belongs to one of the m buckets kept by the sketch. The default values of alpha and m are 0.01 and 2048, repectively. In addition, a value that is smaller than min_value in magnitude is indistinguishable from 0. The default min_value is 1.0e-9. For more details, refer to [2].
+DDSketch has a relative error guarantee of alpha for any quantile q in [0, 1] that is not too small. Concretely, the q-quantile will be accurate up to a relative error of alpha as long as it belongs to one of the m bins kept by the sketch. The default values of alpha and m are 0.01 and 2048, repectively. In addition, a value that is smaller than min_value in magnitude is indistinguishable from 0. The default min_value is 1.0e-9. For more details, refer to [2].
 
 ### Usage
 ```
-import "github.com/DataDog/sketches-go/dogsketch
+import "github.com/DataDog/sketches-go/ddsketch
 
-c := dogsketch.NewDefaultConfig()
-sketch := dogsketch.DogSketch(c)
+c := ddsketch.NewDefaultConfig()
+sketch := ddsketch.DDSketch(c)
 ```
 Add values to the sketch.
 ```
@@ -68,9 +68,9 @@ for i, q := range qs {
   quantiles[i] = sketch.Quantile(q)
 }
 ```
-Merge another `DogSketch` into `sketch`.
+Merge another `DDSketch` into `sketch`.
 ```
-another_sketch := dogsketch.DogSketch(c)
+another_sketch := ddsketch.DDSketch(c)
 for i := 0; i < 500; i++ {
   v := math.NormFloat64()
   another_sketch.Add(v)
