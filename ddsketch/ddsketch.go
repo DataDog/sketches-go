@@ -78,6 +78,9 @@ func (s *DDSketch) Quantile(q float64) float64 {
 	if quantile < s.min {
 		quantile = s.min
 	}
+	if quantile > s.max {
+		quantile = s.max
+	}
 	return quantile
 }
 

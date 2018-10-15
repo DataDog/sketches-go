@@ -30,13 +30,13 @@ func (d *Dataset) Quantile(q float64) float64 {
 		return math.NaN()
 	}
 
-	d.Sort()
+	d.sort()
 	rank := q * float64(d.Count-1)
 	return d.Values[int64(rank)]
 }
 
 func (d *Dataset) Rank(v float64) int64 {
-	d.Sort()
+	d.sort()
 	i := int64(0)
 	for ; i < d.Count; i++ {
 		if d.Values[i] >= v {
@@ -47,12 +47,12 @@ func (d *Dataset) Rank(v float64) int64 {
 }
 
 func (d *Dataset) Min() float64 {
-	d.Sort()
+	d.sort()
 	return d.Values[0]
 }
 
 func (d *Dataset) Max() float64 {
-	d.Sort()
+	d.sort()
 	return d.Values[len(d.Values)-1]
 }
 
@@ -68,7 +68,7 @@ func (d *Dataset) Avg() float64 {
 	return d.Sum() / float64(d.Count)
 }
 
-func (d *Dataset) Sort() {
+func (d *Dataset) sort() {
 	if d.sorted {
 		return
 	}
