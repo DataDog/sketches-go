@@ -1,6 +1,6 @@
 # sketches-go
 
-This repo contains Go implementations of the distributed quantile sketch algorithms GKArray [1] and DogSketch [2]. Both sketches are fully mergeable, meaning that multiple sketches from distributed systems can be combined in a central node.
+This repo contains Go implementations of the distributed quantile sketch algorithms GKArray [1] and DDSketch [2]. Both sketches are fully mergeable, meaning that multiple sketches from distributed systems can be combined in a central node.
 
 ## GKArray
 
