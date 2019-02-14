@@ -36,11 +36,26 @@ func (d *Dataset) Quantile(q float64) float64 {
 }
 
 func (d *Dataset) Rank(v float64) int64 {
+	return d.MinRank(v)
+}
+
+// MinRank is the number of elements in the dataset that are smaller than v
+func (d *Dataset) MinRank(v float64) int64 {
 	d.sort()
-	i := int64(0)
-	for ; i < d.Count; i++ {
+	for i := int64(0); i < d.Count; i++ {
 		if d.Values[i] >= v {
-			return i + 1
+			return i
+		}
+	}
+	return d.Count
+}
+
+// MaxRank is the number of elements in the dataset that are smaller than or equal to v
+func (d *Dataset) MaxRank(v float64) int64 {
+	d.sort()
+	for i := int64(0); i < d.Count; i++ {
+		if d.Values[i] > v {
+			return i
 		}
 	}
 	return d.Count
