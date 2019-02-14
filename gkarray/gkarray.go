@@ -119,7 +119,7 @@ func (s *GKArray) Quantile(q float64) float64 {
 // values of n will never violate the condition n <= int(s.eps * (s.count+o.count-1)).
 func (s *GKArray) Merge(o *GKArray) {
 	if o.epsilon != s.epsilon {
-		panic("Can't merge two GKArrays with different epsilonss!")
+		panic("Can't merge two GKArrays with different epsilons!")
 	}
 	if o.count == 0 {
 		return
@@ -133,16 +133,30 @@ func (s *GKArray) Merge(o *GKArray) {
 
 	incomingEntries := make([]Entry, 0, len(o.entries)+1)
 	if n := o.entries[0].g + o.entries[0].delta - spread - 1; n > 0 {
-		incomingEntries = append(incomingEntries, Entry{v: o.min, g: n, delta: 0})
+		incomingEntries = append(incomingEntries,
+			Entry{
+				v:     o.min,
+				g:     n,
+				delta: 0,
+			},
+		)
 	}
 	for i := 0; i < len(o.entries)-1; i++ {
-		if n := o.entries[i+1].g + o.entries[i+1].delta - o.entries[i].delta; n > 0 { // TODO[Charles]: is the check necessary?
-			incomingEntries = append(incomingEntries, Entry{v: o.entries[i].v, g: n, delta: 0})
-		}
+		incomingEntries = append(incomingEntries,
+			Entry{
+				v:     o.entries[i].v,
+				g:     o.entries[i+1].g + o.entries[i+1].delta - o.entries[i].delta,
+				delta: 0,
+			},
+		)
 	}
-	if n := spread + 1 - o.entries[len(o.entries)-1].delta; n > 0 { // TODO[Charles]: is the check necessary?
-		incomingEntries = append(incomingEntries, Entry{v: o.entries[len(o.entries)-1].v, g: n, delta: 0})
-	}
+	incomingEntries = append(incomingEntries,
+		Entry{
+			v:     o.entries[len(o.entries)-1].v,
+			g:     spread + 1,
+			delta: 0,
+		},
+	)
 
 	s.count += o.count
 	s.sum += o.sum
@@ -185,7 +199,7 @@ func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
 		if j == len(s.entries) {
 			// done with sketch; now only considering incoming
 			if i+1 < len(incomingEntries) &&
-				incomingEntries[i].g+incomingEntries[i+1].g+incomingEntries[i+1].delta <= removalThreshold {
+				incomingEntries[i].g+incomingEntries[i+1].g <= removalThreshold {
 				// removable from incoming
 				incomingEntries[i+1].g += incomingEntries[i].g
 			} else {
