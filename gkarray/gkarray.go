@@ -162,7 +162,6 @@ func (s *GKArray) Compress() {
 // compressWithIncoming merges an optional incomingEntries and incoming buffer into
 // entries and compresses.
 func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
-	// TODO[Charles]: use s.incoming and incomingEntries directly instead of merging them prior to compressing
 	if len(s.incoming) > 0 {
 		incomingCopy := make([]Entry, len(incomingEntries), len(incomingEntries)+len(s.incoming))
 		copy(incomingCopy, incomingEntries)
@@ -182,8 +181,6 @@ func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
 	removalThreshold := 2 * uint32(s.epsilon*float64(s.count-1))
 	merged := make([]Entry, 0, len(s.entries)+len(incomingEntries)/3)
 
-	// TODO[Charles]: The compression algo might not be optimal. We need to revisit it if we need to improve space
-	// complexity (e.g., by compressing incoming entries).
 	for i, j := 0, 0; i < len(incomingEntries) || j < len(s.entries); {
 		if j == len(s.entries) {
 			// done with sketch; now only considering incoming
