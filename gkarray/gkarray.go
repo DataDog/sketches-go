@@ -184,19 +184,8 @@ func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
 
 	// TODO[Charles]: The compression algo might not be optimal. We need to revisit it if we need to improve space
 	// complexity (e.g., by compressing incoming entries).
-	i, j := 0, 0
-	for i < len(incomingEntries) || j < len(s.entries) {
-		if i == len(incomingEntries) {
-			// done with incoming; now only considering the sketch
-			if j+1 < len(s.entries) &&
-				s.entries[j].g+s.entries[j+1].g+s.entries[j+1].delta <= removalThreshold {
-				// removable from sketch
-				s.entries[j+1].g += s.entries[j].g
-			} else {
-				merged = append(merged, s.entries[j])
-			}
-			j++
-		} else if j == len(s.entries) {
+	for i, j := 0, 0; i < len(incomingEntries) || j < len(s.entries); {
+		if j == len(s.entries) {
 			// done with sketch; now only considering incoming
 			if i+1 < len(incomingEntries) &&
 				incomingEntries[i].g+incomingEntries[i+1].g+incomingEntries[i+1].delta <= removalThreshold {
@@ -206,7 +195,7 @@ func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
 				merged = append(merged, incomingEntries[i])
 			}
 			i++
-		} else if incomingEntries[i].v < s.entries[j].v {
+		} else if i < len(incomingEntries) && incomingEntries[i].v < s.entries[j].v {
 			if incomingEntries[i].g+s.entries[j].g+s.entries[j].delta <= removalThreshold {
 				// removable from incoming
 				s.entries[j].g += incomingEntries[i].g
