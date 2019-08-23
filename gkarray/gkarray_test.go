@@ -25,14 +25,19 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator) {
 		g.Add(value)
 		d.Add(value)
 	}
-	AssertSketchesAccurate(t, d, g, n)
+	AssertSketchesAccurate(t, d, g)
 }
 
-func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *GKArray, n int) {
+func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *GKArray) {
 	assert := assert.New(t)
 	eps := float64(1.0e-6)
 	for _, q := range testQuantiles {
-		assert.InDelta(int64(q*float64(d.Count-1))+1, d.Rank(g.Quantile(q)), g.epsilon*(float64(n)))
+		expectedRank := int64(q*float64(d.Count-1)) + 1 // min rank
+		delta := int64(g.epsilon * (float64(d.Count - 1)))
+		quantile := g.Quantile(q)
+		minRank := d.MinRank(quantile)
+		maxRank := d.MaxRank(quantile)
+		assert.True(minRank-delta <= expectedRank && expectedRank <= maxRank+delta)
 	}
 	assert.Equal(d.Min(), g.min)
 	assert.Equal(d.Max(), g.max)
@@ -43,16 +48,7 @@ func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *GKArray, n int)
 func TestConstant(t *testing.T) {
 	for _, n := range testSizes {
 		constantGenerator := dataset.NewConstant(42)
-		g := NewGKArray(testEps)
-		d := dataset.NewDataset()
-		for i := 0; i < n; i++ {
-			value := constantGenerator.Generate()
-			g.Add(value)
-			d.Add(value)
-		}
-		for _, q := range testQuantiles {
-			assert.Equal(t, 42.0, g.Quantile(q))
-		}
+		EvaluateSketch(t, n, constantGenerator)
 	}
 }
 
@@ -104,7 +100,7 @@ func TestMergeNormal(t *testing.T) {
 			d.Add(value)
 		}
 		g1.Merge(g3)
-		AssertSketchesAccurate(t, d, g1, n)
+		AssertSketchesAccurate(t, d, g1)
 	}
 }
 
@@ -121,12 +117,12 @@ func TestMergeEmpty(t *testing.T) {
 			d.Add(value)
 		}
 		g1.Merge(g2)
-		AssertSketchesAccurate(t, d, g1, n)
+		AssertSketchesAccurate(t, d, g1)
 
 		// Merge an empty sketch to a non-empty sketch
 		g3 := NewGKArray(testEps)
 		g2.Merge(g3)
-		AssertSketchesAccurate(t, d, g2, n)
+		AssertSketchesAccurate(t, d, g2)
 	}
 }
 
@@ -158,7 +154,7 @@ func TestMergeMixed(t *testing.T) {
 		}
 		g1.Merge(g3)
 
-		AssertSketchesAccurate(t, d, g1, n)
+		AssertSketchesAccurate(t, d, g1)
 	}
 }
 

@@ -119,7 +119,7 @@ func (s *GKArray) Quantile(q float64) float64 {
 // values of n will never violate the condition n <= int(s.eps * (s.count+o.count-1)).
 func (s *GKArray) Merge(o *GKArray) {
 	if o.epsilon != s.epsilon {
-		panic("Can't merge two GKArrays with different epsilonss!")
+		panic("Can't merge two GKArrays with different epsilons!")
 	}
 	if o.count == 0 {
 		return
@@ -133,16 +133,30 @@ func (s *GKArray) Merge(o *GKArray) {
 
 	incomingEntries := make([]Entry, 0, len(o.entries)+1)
 	if n := o.entries[0].g + o.entries[0].delta - spread - 1; n > 0 {
-		incomingEntries = append(incomingEntries, Entry{v: o.min, g: n, delta: 0})
+		incomingEntries = append(incomingEntries,
+			Entry{
+				v:     o.min,
+				g:     n,
+				delta: 0,
+			},
+		)
 	}
 	for i := 0; i < len(o.entries)-1; i++ {
-		if n := o.entries[i+1].g + o.entries[i+1].delta - o.entries[i].delta; n > 0 { // TODO[Charles]: is the check necessary?
-			incomingEntries = append(incomingEntries, Entry{v: o.entries[i].v, g: n, delta: 0})
-		}
+		incomingEntries = append(incomingEntries,
+			Entry{
+				v:     o.entries[i].v,
+				g:     o.entries[i+1].g + o.entries[i+1].delta - o.entries[i].delta,
+				delta: 0,
+			},
+		)
 	}
-	if n := spread + 1 - o.entries[len(o.entries)-1].delta; n > 0 { // TODO[Charles]: is the check necessary?
-		incomingEntries = append(incomingEntries, Entry{v: o.entries[len(o.entries)-1].v, g: n, delta: 0})
-	}
+	incomingEntries = append(incomingEntries,
+		Entry{
+			v:     o.entries[len(o.entries)-1].v,
+			g:     spread + 1,
+			delta: 0,
+		},
+	)
 
 	s.count += o.count
 	s.sum += o.sum
@@ -162,7 +176,6 @@ func (s *GKArray) Compress() {
 // compressWithIncoming merges an optional incomingEntries and incoming buffer into
 // entries and compresses.
 func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
-	// TODO[Charles]: use s.incoming and incomingEntries directly instead of merging them prior to compressing
 	if len(s.incoming) > 0 {
 		incomingCopy := make([]Entry, len(incomingEntries), len(incomingEntries)+len(s.incoming))
 		copy(incomingCopy, incomingEntries)
@@ -182,31 +195,18 @@ func (s *GKArray) compressWithIncoming(incomingEntries Entries) {
 	removalThreshold := 2 * uint32(s.epsilon*float64(s.count-1))
 	merged := make([]Entry, 0, len(s.entries)+len(incomingEntries)/3)
 
-	// TODO[Charles]: The compression algo might not be optimal. We need to revisit it if we need to improve space
-	// complexity (e.g., by compressing incoming entries).
-	i, j := 0, 0
-	for i < len(incomingEntries) || j < len(s.entries) {
-		if i == len(incomingEntries) {
-			// done with incoming; now only considering the sketch
-			if j+1 < len(s.entries) &&
-				s.entries[j].g+s.entries[j+1].g+s.entries[j+1].delta <= removalThreshold {
-				// removable from sketch
-				s.entries[j+1].g += s.entries[j].g
-			} else {
-				merged = append(merged, s.entries[j])
-			}
-			j++
-		} else if j == len(s.entries) {
+	for i, j := 0, 0; i < len(incomingEntries) || j < len(s.entries); {
+		if j == len(s.entries) {
 			// done with sketch; now only considering incoming
 			if i+1 < len(incomingEntries) &&
-				incomingEntries[i].g+incomingEntries[i+1].g+incomingEntries[i+1].delta <= removalThreshold {
+				incomingEntries[i].g+incomingEntries[i+1].g <= removalThreshold {
 				// removable from incoming
 				incomingEntries[i+1].g += incomingEntries[i].g
 			} else {
 				merged = append(merged, incomingEntries[i])
 			}
 			i++
-		} else if incomingEntries[i].v < s.entries[j].v {
+		} else if i < len(incomingEntries) && incomingEntries[i].v < s.entries[j].v {
 			if incomingEntries[i].g+s.entries[j].g+s.entries[j].delta <= removalThreshold {
 				// removable from incoming
 				s.entries[j].g += incomingEntries[i].g

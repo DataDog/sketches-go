@@ -30,14 +30,14 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator) {
 		g.Add(value)
 		d.Add(value)
 	}
-	AssertSketchesAccurate(t, d, g, n, c)
+	AssertSketchesAccurate(t, d, g, c)
 }
 
-func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DDSketch, n int, c *Config) {
+func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DDSketch, c *Config) {
 	assert := assert.New(t)
 	eps := float64(1.0e-6)
 	for _, q := range testQuantiles {
-		assert.InDelta(d.Quantile(q), g.Quantile(q), testAlpha*d.Quantile(q))
+		assert.InDelta(d.Quantile(q), g.Quantile(q), testAlpha*d.Quantile(q)) // lower quantile
 	}
 	assert.Equal(d.Min(), g.min)
 	assert.Equal(d.Max(), g.max)
@@ -48,15 +48,7 @@ func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DDSketch, n int
 func TestConstant(t *testing.T) {
 	for _, n := range testSizes {
 		constantGenerator := dataset.NewConstant(42)
-		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g := NewDDSketch(c)
-		d := dataset.NewDataset()
-		for i := 0; i < n; i++ {
-			value := constantGenerator.Generate()
-			g.Add(value)
-			d.Add(value)
-		}
-		AssertSketchesAccurate(t, d, g, n, c)
+		EvaluateSketch(t, n, constantGenerator)
 	}
 }
 
@@ -115,7 +107,7 @@ func TestMergeNormal(t *testing.T) {
 			d.Add(value)
 		}
 		g1.Merge(g3)
-		AssertSketchesAccurate(t, d, g1, n, c)
+		AssertSketchesAccurate(t, d, g1, c)
 	}
 }
 
@@ -133,12 +125,12 @@ func TestMergeEmpty(t *testing.T) {
 			d.Add(value)
 		}
 		g1.Merge(g2)
-		AssertSketchesAccurate(t, d, g1, n, c)
+		AssertSketchesAccurate(t, d, g1, c)
 
 		// Merge an empty sketch to a non-empty sketch
 		g3 := NewDDSketch(c)
 		g2.Merge(g3)
-		AssertSketchesAccurate(t, d, g2, n, c)
+		AssertSketchesAccurate(t, d, g2, c)
 	}
 }
 
@@ -171,7 +163,7 @@ func TestMergeMixed(t *testing.T) {
 		}
 		g1.Merge(g3)
 
-		AssertSketchesAccurate(t, d, g1, n, c)
+		AssertSketchesAccurate(t, d, g1, c)
 	}
 }
 
