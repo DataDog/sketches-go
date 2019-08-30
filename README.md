@@ -7,37 +7,45 @@ This repo contains Go implementations of the distributed quantile sketch algorit
 GKArray provides a sketch with a rank error guarantee of espilon (without merge) or 2\*epsilon (with merge). The default value of epsilon is 0.01.
 
 ### Usage
-```
-import "github.com/DataDog/sketches-go/gkarray
 
-sketch := gkarray.NewGKArray()
+```go
+import "github.com/DataDog/sketches-go/gkarray"
+
+sketch := gk.NewDefaultGKArray()
 ```
-Add some values to the sketch. 
-```
-import "math"
+
+Add some values to the sketch.
+
+```go
+import "math/rand"
 
 for i := 0; i < 500; i++ {
-  v := math.NormFloat64()
-  sketch = sketch.Add(v)
+  v := rand.NormFloat64()
+  sketch.Add(v)
 }
 ```
+
 Find the quantiles to within epsilon of rank.
-```
-qs := [0.5, 0.75, 0.9, 1]
+
+```go
+qs := []float64{0.5, 0.75, 0.9, 1}
 quantiles := make([]float64, len(qs))
 for i, q := range qs {
   quantiles[i] = sketch.Quantile(q)
 }
 ```
+
 Merge another `GKArray` into `sketch`.
-```
-another_sketch = gkarray.NewGKArray()
+
+```go
+anotherSketch := gk.NewDefaultGKArray()
 for i := 0; i < 500; i++ {
-  v := math.NormFloat64()
-  another_sketch = another_sketch.Add(v)
+  v := rand.NormFloat64()
+  anotherSketch.Add(v)
 }
-sketch = sketch.Merge(another_sketch)
+anotherSketch.Merge(sketch)
 ```
+
 Now the quantiles will be accurate to within 2\*epsilon of rank.
 
 ## DDSketch
@@ -45,41 +53,50 @@ Now the quantiles will be accurate to within 2\*epsilon of rank.
 DDSketch has a relative error guarantee of alpha for any quantile q in [0, 1] that is not too small. Concretely, the q-quantile will be accurate up to a relative error of alpha as long as it belongs to one of the m bins kept by the sketch. The default values of alpha and m are 0.01 and 2048, repectively. In addition, a value that is smaller than min_value in magnitude is indistinguishable from 0. The default min_value is 1.0e-9. For more details, refer to [2].
 
 ### Usage
-```
-import "github.com/DataDog/sketches-go/ddsketch
+
+```go
+import "github.com/DataDog/sketches-go/ddsketch"
 
 c := ddsketch.NewDefaultConfig()
-sketch := ddsketch.DDSketch(c)
+sketch := ddsketch.NewDDSketch(c)
 ```
+
 Add values to the sketch.
-```
-import "math"
+
+```go
+import "math/rand"
 
 for i := 0; i < 500; i++ {
-  v := math.NormFloat64()
+  v := rand.NormFloat64()
   sketch.Add(v)
 }
 ```
+
 Find the quantiles to within alpha relative error.
-```
-qs := [0.5, 0.75, 0.9, 1]
+
+```go
+qs := []float64{0.5, 0.75, 0.9, 1}
 quantiles := make([]float64, len(qs))
 for i, q := range qs {
   quantiles[i] = sketch.Quantile(q)
 }
 ```
+
 Merge another `DDSketch` into `sketch`.
-```
-another_sketch := ddsketch.DDSketch(c)
+
+```go
+anotherSketch := ddsketch.NewDDSketch(c)
 for i := 0; i < 500; i++ {
-  v := math.NormFloat64()
-  another_sketch.Add(v)
+  v := rand.NormFloat64()
+  anotherSketch.Add(v)
 }
-sketch.Merge(another_sketch)
+anotherSketch.Merge(sketch)
 ```
+
 The quantiles are still accurate to within alpha relative error.
 
 ## References
+
 [1] Michael B. Greenwald and Sanjeev Khanna. Space-efficient online computation of quantile summaries. In Proc. 2001 ACM
 SIGMOD International Conference on Management of Data, SIGMOD ’01, pages 58–66. ACM, 2001.
 
