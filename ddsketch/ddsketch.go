@@ -65,10 +65,10 @@ func (s *DDSketch) Quantile(q float64) float64 {
 	var quantile float64
 	if key < 0 {
 		key += s.config.offset
-		quantile = -0.5 * (1 + s.config.gamma) * s.config.powGamma(-key-1)
+		quantile = -2 * s.config.powGamma(-key) / (1 + s.config.gamma)
 	} else if key > 0 {
 		key -= s.config.offset
-		quantile = 0.5 * (1 + s.config.gamma) * s.config.powGamma(key-1)
+		quantile = 2 * s.config.powGamma(key) / (1 + s.config.gamma)
 	} else {
 		quantile = 0
 	}

@@ -26,13 +26,27 @@ func (d *Dataset) Add(v float64) {
 
 // Quantile returns the lower quantile of the dataset
 func (d *Dataset) Quantile(q float64) float64 {
+	return d.LowerQuantile(q)
+}
+
+func (d *Dataset) LowerQuantile(q float64) float64 {
 	if q < 0 || q > 1 || d.Count == 0 {
 		return math.NaN()
 	}
 
 	d.sort()
 	rank := q * float64(d.Count-1)
-	return d.Values[int64(rank)]
+	return d.Values[int64(math.Floor(rank))]
+}
+
+func (d *Dataset) UpperQuantile(q float64) float64 {
+	if q < 0 || q > 1 || d.Count == 0 {
+		return math.NaN()
+	}
+
+	d.sort()
+	rank := q * float64(d.Count-1)
+	return d.Values[int64(math.Ceil(rank))]
 }
 
 func (d *Dataset) Rank(v float64) int64 {

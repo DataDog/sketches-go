@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var testAlpha = 0.05
+var testAlpha = 0.01
 var testMaxBins = 1024
 var testMinValue = 1.0e-9
 
@@ -37,7 +37,23 @@ func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DDSketch, c *Co
 	assert := assert.New(t)
 	eps := float64(1.0e-6)
 	for _, q := range testQuantiles {
-		assert.InDelta(d.Quantile(q), g.Quantile(q), testAlpha*d.Quantile(q)) // lower quantile
+		lowerQuantile := d.LowerQuantile(q)
+		upperQuantile := d.UpperQuantile(q)
+		var minExpectedValue, maxExpectedValue float64
+		if lowerQuantile < 0 {
+			minExpectedValue = lowerQuantile * (1 + testAlpha)
+		} else {
+			minExpectedValue = lowerQuantile * (1 - testAlpha)
+		}
+		if upperQuantile > 0 {
+			maxExpectedValue = upperQuantile * (1 + testAlpha)
+		} else {
+			maxExpectedValue = upperQuantile * (1 - testAlpha)
+		}
+		quantile := g.Quantile(q)
+		// TODO: be resilient to floating-point errors
+		assert.True(minExpectedValue <= quantile)
+		assert.True(quantile <= maxExpectedValue)
 	}
 	assert.Equal(d.Min(), g.min)
 	assert.Equal(d.Max(), g.max)

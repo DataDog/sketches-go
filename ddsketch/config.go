@@ -16,6 +16,9 @@ const (
 	defaultMinValue   = 1.0e-9
 )
 
+// Config contains an offset for the bin keys which ensures that keys for positive
+// numbers that are larger than minValue are greater than or equal to 1 while the
+// keys for negative numbers are less than or equal to -1.
 type Config struct {
 	maxNumBins int
 	gamma      float64
@@ -24,25 +27,15 @@ type Config struct {
 	offset     int
 }
 
-// Config contains an offset for the bin keys which ensures that keys for positive
-// numbers that are larger than minValue are greater than or equal to 1 while the
-// keys for negative numbers are less than or equal to -1.
 func NewDefaultConfig() *Config {
-	c := &Config{
-		maxNumBins: defaultMaxNumBins,
-		gamma:      1 + 2*defaultAlpha,
-		gammaLn:    math.Log1p(2 * defaultAlpha),
-		minValue:   defaultMinValue,
-	}
-	c.offset = -int(c.logGamma(c.minValue)) + 1
-	return c
+	return NewConfig(defaultAlpha, defaultMaxNumBins, defaultMinValue)
 }
 
 func NewConfig(alpha float64, maxNumBins int, minValue float64) *Config {
 	c := &Config{
 		maxNumBins: maxNumBins,
-		gamma:      1 + 2*alpha,
-		gammaLn:    math.Log1p(2 * alpha),
+		gamma:      1 + 2*alpha/(1-alpha),
+		gammaLn:    math.Log1p(2 * alpha / (1 - alpha)),
 		minValue:   minValue,
 	}
 	c.offset = -int(c.logGamma(c.minValue)) + 1
