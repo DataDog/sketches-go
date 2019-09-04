@@ -43,7 +43,7 @@ for i := 0; i < 500; i++ {
   v := rand.NormFloat64()
   anotherSketch.Add(v)
 }
-anotherSketch.Merge(sketch)
+sketch.Merge(anotherSketch)
 ```
 
 Now the quantiles will be accurate to within 2\*epsilon of rank.
@@ -90,7 +90,7 @@ for i := 0; i < 500; i++ {
   v := rand.NormFloat64()
   anotherSketch.Add(v)
 }
-anotherSketch.Merge(sketch)
+sketch.Merge(anotherSketch)
 ```
 
 The quantiles are still accurate to within alpha relative error.

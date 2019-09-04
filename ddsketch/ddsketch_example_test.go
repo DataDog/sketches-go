@@ -23,7 +23,7 @@ func Example() {
 		v := rand.NormFloat64()
 		anotherSketch.Add(v)
 	}
-	anotherSketch.Merge(sketch)
+	sketch.Merge(anotherSketch)
 
 	fmt.Println(quantiles(sketch))
 	fmt.Println(quantiles(anotherSketch))
