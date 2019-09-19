@@ -130,10 +130,10 @@ func (s *Store) growRight(key int) {
 }
 
 func (s *Store) Merge(o *Store) {
-	if len(o.bins) == 0 {
+	if o.count == 0 {
 		return
 	}
-	if len(s.bins) == 0 {
+	if s.count == 0 {
 		s.Copy(o)
 		return
 	}
