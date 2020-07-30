@@ -181,6 +181,7 @@ func (s *Store) Copy(o *Store) {
 	s.minKey = o.minKey
 	s.maxKey = o.maxKey
 	s.count = o.count
+	s.maxNumBins = o.maxNumBins
 }
 
 func (s *Store) MakeCopy() *Store {
