@@ -76,7 +76,6 @@ func (s *Store) growLeft(key int) {
 	if s.minKey < key || len(s.bins) >= s.maxNumBins {
 		return
 	}
-
 	var minKey int
 	if s.maxKey-key >= s.maxNumBins {
 		minKey = s.maxKey - s.maxNumBins + 1
@@ -137,7 +136,6 @@ func (s *Store) Merge(o *Store) {
 		s.Copy(o)
 		return
 	}
-
 	if s.maxKey > o.maxKey {
 		if o.minKey < s.minKey {
 			s.growLeft(o.minKey)
