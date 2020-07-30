@@ -175,13 +175,6 @@ func max(x, y int) int {
 	return y
 }
 
-func min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
-}
-
 func (s *Store) Copy(o *Store) {
 	s.bins = make([]int64, len(o.bins))
 	copy(s.bins, o.bins)
