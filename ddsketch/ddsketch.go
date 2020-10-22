@@ -1,159 +1,108 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2018 Datadog, Inc.
+// Copyright 2020 Datadog, Inc.
 
 package ddsketch
 
 import (
-	"bytes"
-	"fmt"
-	"math"
-	"reflect"
+	"errors"
+
+	"github.com/DataDog/sketches-go/ddsketch/store"
 )
 
-// DDSketch is an implementation of DDSketch.
 type DDSketch struct {
-	config *Config
-	store  *Store
-	min    float64
-	max    float64
-	count  int64
-	sum    float64
+	IndexMapping
+	store     store.Store
+	zeroCount float64
 }
 
-// NewDDSketch allocates a new DDSketch summary with relative accuracy alpha.
-func NewDDSketch(c *Config) *DDSketch {
+func NewDDSketch(indexMapping IndexMapping, store store.Store) *DDSketch {
 	return &DDSketch{
-		config: c,
-		store:  NewStore(c.maxNumBins),
-		min:    math.Inf(1),
-		max:    math.Inf(-1),
+		IndexMapping: indexMapping,
+		store:        store,
 	}
 }
 
-// Add a new value to the summary.
-func (s *DDSketch) Add(v float64) {
-	key := s.config.Key(v)
-	s.store.Add(key)
-
-	// Keep track of summary stats
-	if v < s.min {
-		s.min = v
+func MemoryOptimalCollapsingLowestSketch(relativeAccuracy float64, maxNumBins int) (*DDSketch, error) {
+	indexMapping, err := NewLogarithmicMapping(relativeAccuracy)
+	if err != nil {
+		return nil, err
 	}
-	if s.max < v {
-		s.max = v
-	}
-	s.count++
-	s.sum += v
+	return NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(maxNumBins)), nil
 }
 
-// Quantile returns the estimate of the element at q.
-func (s *DDSketch) Quantile(q float64) float64 {
-	if q < 0 || q > 1 || s.count == 0 {
-		return math.NaN()
+func (s *DDSketch) Accept(value float64) error {
+	if value < 0 || value > s.MaxIndexableValue() {
+		return errors.New("The input value is outside the range that is tracked by the sketch.")
 	}
 
-	if q == 0 {
-		return s.min
-	} else if q == 1 {
-		return s.max
-	}
-
-	rank := int(q*float64(s.count-1) + 1)
-	key := s.store.KeyAtRank(rank)
-	var quantile float64
-	if key < 0 {
-		key += s.config.offset
-		quantile = -2 * s.config.powGamma(-key) / (1 + s.config.gamma)
-	} else if key > 0 {
-		key -= s.config.offset
-		quantile = 2 * s.config.powGamma(key) / (1 + s.config.gamma)
+	if value < s.MinIndexableValue() {
+		s.zeroCount++
 	} else {
-		quantile = 0
+		s.store.Add(s.Index(value))
 	}
-	// Check that the returned value is larger than the minimum
-	// since for q close to 0 (key in the smallest bin) the midpoint
-	// of the bin boundaries could be smaller than the minimum
-	if quantile < s.min {
-		quantile = s.min
-	}
-	if quantile > s.max {
-		quantile = s.max
-	}
-	return quantile
+	return nil
 }
 
-// Merge another sketch (with the same maxNumBins and gamma) in place.
-func (s *DDSketch) Merge(o *DDSketch) {
-	if o.count == 0 {
-		return
-	}
-	if s.count == 0 {
-		s.store.Copy(o.store)
-		s.count = o.count
-		s.sum = o.sum
-		s.min = o.min
-		s.max = o.max
-		return
+func (s *DDSketch) getValueAtQuantile(quantile float64) (float64, error) {
+	if quantile < 0 || quantile > 1 {
+		return 0, errors.New("The quantile must be between 0 and 1.")
 	}
 
-	// Merge the bins
-	s.store.Merge(o.store)
+	count := s.getCount()
+	if count == 0 {
+		return 0, errors.New("No such element exists")
+	}
 
-	// Merge summary stats
-	s.count += o.count
-	s.sum += o.sum
-	if o.min < s.min {
-		s.min = o.min
+	rank := quantile * (count - 1)
+	if rank < s.zeroCount {
+		return 0, nil
 	}
-	if o.max > s.max {
-		s.max = o.max
-	}
+	return s.Value(s.store.KeyAtRank(rank - s.zeroCount)), nil
 }
 
-func (s *DDSketch) Sum() float64 {
-	return s.sum
-}
-
-func (s *DDSketch) Avg() float64 {
-	return s.sum / float64(s.count)
-}
-
-func (s *DDSketch) Count() int64 {
-	return s.count
-}
-
-func (s *DDSketch) MakeCopy() *DDSketch {
-	store := s.store.MakeCopy()
-	config := &Config{
-		maxNumBins: s.config.maxNumBins,
-		gamma:      s.config.gamma,
-		gammaLn:    s.config.gammaLn,
-		minValue:   s.config.minValue,
-		offset:     s.config.offset,
+func (s *DDSketch) getValuesAtQuantiles(quantiles []float64) ([]float64, error) {
+	values := make([]float64, len(quantiles))
+	for i, q := range quantiles {
+		val, err := s.getValueAtQuantile(q)
+		if err != nil {
+			return nil, err
+		}
+		values[i] = val
 	}
-	return &DDSketch{
-		config: config,
-		store:  store,
-		min:    s.min,
-		max:    s.max,
-		count:  s.count,
-		sum:    s.sum,
+	return values, nil
+}
+
+func (s *DDSketch) getCount() float64 {
+	return s.zeroCount + s.store.TotalCount()
+}
+
+func (s *DDSketch) IsEmpty() bool {
+	return s.getCount() == 0
+}
+
+func (s *DDSketch) getMaxValue() float64 {
+	if s.zeroCount > 0 && s.store.IsEmpty() {
+		return 0
+	} else {
+		return s.Value(s.store.MaxIndex())
 	}
 }
 
-func (s *DDSketch) String() string {
-	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("offset: %d ", s.config.offset))
-	buffer.WriteString(fmt.Sprintf("count: %d ", s.count))
-	buffer.WriteString(fmt.Sprintf("sum: %g ", s.sum))
-	buffer.WriteString(fmt.Sprintf("min: %g ", s.min))
-	buffer.WriteString(fmt.Sprintf("max: %g ", s.max))
-	buffer.WriteString(fmt.Sprintf("bins: %s\n", s.store))
-	return buffer.String()
+func (s *DDSketch) getMinValue() float64 {
+	if s.zeroCount > 0 {
+		return 0
+	} else {
+		return s.Value(s.store.MinIndex())
+	}
 }
 
-func (s *DDSketch) MemorySize() int {
-	return int(reflect.TypeOf(*s).Size()) + s.store.Size() + s.config.Size()
+func (s *DDSketch) MergeWith(other *DDSketch) error {
+	if !s.IndexMapping.Equals(other.IndexMapping) {
+		return errors.New("Cannot merge sketches with different index mappings.")
+	}
+	s.store.MergeWith(other.store)
+	s.zeroCount += other.zeroCount
+	return nil
 }
