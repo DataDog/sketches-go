@@ -18,10 +18,6 @@ type Dataset struct {
 
 func NewDataset() *Dataset { return &Dataset{} }
 
-func NewDatasetFromValues(values []float64) *Dataset {
-	return &Dataset{Values: values, Count: float64(len(values))}
-}
-
 func (d *Dataset) Add(v float64) {
 	d.Values = append(d.Values, v)
 	d.Count++
@@ -53,32 +49,6 @@ func (d *Dataset) UpperQuantile(q float64) float64 {
 	return d.Values[int(math.Ceil(rank))]
 }
 
-//func (d *Dataset) Rank(v float64) int64 {
-//	return d.MaxRank(v)
-//}
-
-// MinRank is the number of elements in the dataset that are smaller than v
-//func (d *Dataset) MinRank(v float64) int64 {
-//	d.sort()
-//	for i := int(0); i < d.Count; i++ {
-//		if d.Values[i] >= v {
-//			return i
-//		}
-//	}
-//	return d.Count
-//}
-
-// MaxRank is the number of elements in the dataset that are smaller than or equal to v
-//func (d *Dataset) MaxRank(v float64) int64 {
-//	d.sort()
-//	for i := 0; i < d.Count; i++ {
-//		if d.Values[i] > v {
-//			return i
-//		}
-//	}
-//	return d.Count
-//}
-
 func (d *Dataset) Min() float64 {
 	d.sort()
 	return d.Values[0]
@@ -95,18 +65,6 @@ func (d *Dataset) Merge(o *Dataset) {
 	}
 }
 
-//func (d *Dataset) Sum() float64 {
-//	s := float64(0)
-//	for _, v := range d.Values {
-//		s += v
-//	}
-//	return s
-//}
-
-//func (d *Dataset) Avg() float64 {
-//	return d.Sum() / float64(d.Count)
-//}
-
 func (d *Dataset) sort() {
 	if d.sorted {
 		return
@@ -114,21 +72,3 @@ func (d *Dataset) sort() {
 	sort.Float64s(d.Values)
 	d.sorted = true
 }
-
-/*
-func NewConstant(value float64, size int) *Dataset {
-        d := NewDataset()
-        for i:= 0; i < size; i++ {
-            d.Add(value)
-        }
-        return d
-}
-
-func NewLinear(start, size int) *Dataset {
-        d := NewDataset()
-       for v := start; v < start + size; v++ {
-                d.Add(float64(v))
-        }
-        return d
-}
-*/
