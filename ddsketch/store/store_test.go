@@ -26,9 +26,11 @@ func EvaluateValues(t *testing.T, store *DenseStore, values []int, collapsed boo
 	assert.Equal(t, count, float64(len(values)))
 	sort.Ints(values)
 	if !collapsed {
-		assert.Equal(t, store.MinIndex(), values[0])
+		minIndex, _ := store.MinIndex()
+		assert.Equal(t, minIndex, values[0])
 	}
-	assert.Equal(t, store.MaxIndex(), values[len(values)-1])
+	maxIndex, _ := store.MaxIndex()
+	assert.Equal(t, maxIndex, values[len(values)-1])
 }
 
 func EvaluateBins(t *testing.T, bins []Bin, values []int) {
@@ -115,7 +117,8 @@ func EvaluateCollapsingValues(t *testing.T, store *CollapsingLowestDenseStore, v
 	assert.Equal(t, count, store.count)
 	assert.Equal(t, count, float64(len(values)))
 	sort.Ints(values)
-	assert.Equal(t, store.MaxIndex(), values[len(values)-1])
+	maxIndex, _ := store.MaxIndex()
+	assert.Equal(t, maxIndex, values[len(values)-1])
 	assert.GreaterOrEqual(t, store.maxNumBins, len(store.bins))
 }
 
@@ -156,8 +159,10 @@ func TestCollapsingLowest(t *testing.T) {
 			store.Add(i)
 		}
 		assert.Equal(t, len(store.bins), maxNumBins)
-		assert.Equal(t, store.MinIndex(), maxNumBins)
-		assert.Equal(t, store.MaxIndex(), 2*maxNumBins-1)
+		minIndex, _ := store.MinIndex()
+		assert.Equal(t, minIndex, maxNumBins)
+		maxIndex, _ := store.MaxIndex()
+		assert.Equal(t, maxIndex, 2*maxNumBins-1)
 	}
 }
 

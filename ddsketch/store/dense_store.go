@@ -7,6 +7,7 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 )
 
@@ -39,7 +40,7 @@ func (s *DenseStore) Add(index int) {
 	} else if index > s.maxIndex {
 		s.growRight(index)
 	}
-	idx := max(0, index-s.minIndex)
+	idx := index - s.minIndex
 	s.bins[idx]++
 	s.count++
 }
@@ -52,22 +53,28 @@ func (s *DenseStore) TotalCount() float64 {
 	return s.count
 }
 
-func (s *DenseStore) MinIndex() int {
+func (s *DenseStore) MinIndex() (int, error) {
+	if s.count == 0 {
+		return 0, errors.New("MinIndex of empty store is undefined.")
+	}
 	for i, b := range s.bins {
 		if b > 0 {
-			return i + s.minIndex
+			return i + s.minIndex, nil
 		}
 	}
-	return s.maxIndex
+	return s.maxIndex, nil
 }
 
-func (s *DenseStore) MaxIndex() int {
+func (s *DenseStore) MaxIndex() (int, error) {
+	if s.count == 0 {
+		return 0, errors.New("MaxIndex of empty store is undefined.")
+	}
 	for i := s.maxIndex; i >= s.minIndex; i-- {
 		if s.bins[i-s.minIndex] > 0 {
-			return i
+			return i, nil
 		}
 	}
-	return s.minIndex
+	return s.minIndex, nil
 }
 
 // Return the key for the value at rank
@@ -88,8 +95,8 @@ func (s *DenseStore) growLeft(index int) {
 	}
 	// Expand bins by an extra growthBuffer bins than strictly required.
 	minIndex := index - growthBuffer
-	// Note that there's no protection against integer overflow of s.maxIndex-minIndex+1, 
-        // or that allocating a slice of this size is possible.
+	// Note that there's no protection against integer overflow of s.maxIndex-minIndex+1,
+	// or whether allocating a slice of this size is possible.
 	tmpBins := make([]float64, s.maxIndex-minIndex+1)
 	copy(tmpBins[s.minIndex-minIndex:], s.bins)
 	s.bins = tmpBins
@@ -102,8 +109,8 @@ func (s *DenseStore) growRight(index int) {
 	}
 	// Expand bins by an extra growthBuffer bins than strictly required.
 	maxIndex := index + growthBuffer
-	// Note that there's no protection against integer overflow of maxIndex-s.minIndex+1, 
-        // or that allocating a slice of this size is possible.
+	// Note that there's no protection against integer overflow of maxIndex-s.minIndex+1,
+	// or whether allocating a slice of this size is possible.
 	tmpBins := make([]float64, maxIndex-s.minIndex+1)
 	copy(tmpBins, s.bins)
 	s.bins = tmpBins

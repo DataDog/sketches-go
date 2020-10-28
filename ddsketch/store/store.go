@@ -10,8 +10,8 @@ type Store interface {
 	AddBin(bin Bin)
 	Bins() <-chan Bin
 	IsEmpty() bool
-	MaxIndex() int
-	MinIndex() int
+	MaxIndex() (int, error)
+	MinIndex() (int, error)
 	TotalCount() float64
 	KeyAtRank(rank float64) int
 	MergeWith(store Store)

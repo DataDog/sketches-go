@@ -7,6 +7,7 @@ package ddsketch
 
 import (
 	"errors"
+	"math"
 
 	"github.com/DataDog/sketches-go/ddsketch/store"
 )
@@ -47,12 +48,12 @@ func (s *DDSketch) Accept(value float64) error {
 
 func (s *DDSketch) getValueAtQuantile(quantile float64) (float64, error) {
 	if quantile < 0 || quantile > 1 {
-		return 0, errors.New("The quantile must be between 0 and 1.")
+		return math.NaN(), errors.New("The quantile must be between 0 and 1.")
 	}
 
 	count := s.getCount()
 	if count == 0 {
-		return 0, errors.New("No such element exists")
+		return math.NaN(), errors.New("No such element exists")
 	}
 
 	rank := quantile * (count - 1)
@@ -82,19 +83,27 @@ func (s *DDSketch) IsEmpty() bool {
 	return s.getCount() == 0
 }
 
-func (s *DDSketch) getMaxValue() float64 {
+func (s *DDSketch) getMaxValue() (float64, error) {
 	if s.zeroCount > 0 && s.store.IsEmpty() {
-		return 0
+		return 0, nil
 	} else {
-		return s.Value(s.store.MaxIndex())
+		maxIndex, err := s.store.MaxIndex()
+		if err != nil {
+			return math.NaN(), err
+		}
+		return s.Value(maxIndex), nil
 	}
 }
 
-func (s *DDSketch) getMinValue() float64 {
+func (s *DDSketch) getMinValue() (float64, error) {
 	if s.zeroCount > 0 {
-		return 0
+		return 0, nil
 	} else {
-		return s.Value(s.store.MinIndex())
+		minIndex, err := s.store.MinIndex()
+		if err != nil {
+			return math.NaN(), err
+		}
+		return s.Value(minIndex), nil
 	}
 }
 
