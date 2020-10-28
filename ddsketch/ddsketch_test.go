@@ -1,11 +1,12 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2018 Datadog, Inc.
+// Copyright 2020 Datadog, Inc.
 
 package ddsketch
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/DataDog/sketches-go/dataset"
@@ -13,173 +14,181 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var testAlpha = 0.01
-var testMaxBins = 1024
-var testMinValue = 1.0e-9
+const (
+	floatingPointAcceptableError = 1e-12
+)
 
-var testQuantiles = []float64{0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1}
+var (
+	testAlphas    = []float64{0.1, 0.01}
+	testMaxBins   = 2048
+	testQuantiles = []float64{0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1}
+	testSizes     = []int{3, 5, 10, 100, 1000}
+)
 
-var testSizes = []int{3, 5, 10, 100, 1000}
-
-func EvaluateSketch(t *testing.T, n int, gen dataset.Generator) {
-	c := NewConfig(testAlpha, testMaxBins, testMinValue)
-	g := NewDDSketch(c)
-	d := dataset.NewDataset()
+func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
+	sketch, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+	data := dataset.NewDataset()
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
-		g.Add(value)
-		d.Add(value)
+		sketch.Accept(value)
+		data.Add(value)
 	}
-	AssertSketchesAccurate(t, d, g, c)
+	AssertSketchesAccurate(t, data, sketch, alpha)
 }
 
-func AssertSketchesAccurate(t *testing.T, d *dataset.Dataset, g *DDSketch, c *Config) {
+func AssertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch *DDSketch, alpha float64) {
 	assert := assert.New(t)
-	eps := float64(1.0e-6)
-	for _, q := range testQuantiles {
-		lowerQuantile := d.LowerQuantile(q)
-		upperQuantile := d.UpperQuantile(q)
-		var minExpectedValue, maxExpectedValue float64
-		if lowerQuantile < 0 {
-			minExpectedValue = lowerQuantile * (1 + testAlpha)
-		} else {
-			minExpectedValue = lowerQuantile * (1 - testAlpha)
+	assert.Equal(data.Count, sketch.getCount())
+	if data.Count == 0 {
+		assert.True(sketch.IsEmpty())
+	} else {
+		for _, q := range testQuantiles {
+			lowerQuantile := data.LowerQuantile(q)
+			upperQuantile := data.UpperQuantile(q)
+			minExpectedValue := lowerQuantile * (1 - alpha)
+			maxExpectedValue := upperQuantile * (1 + alpha)
+			quantile, _ := sketch.getValueAtQuantile(q)
+			assert.True(quantile >= minExpectedValue-floatingPointAcceptableError)
+			assert.True(quantile <= maxExpectedValue+floatingPointAcceptableError)
 		}
-		if upperQuantile > 0 {
-			maxExpectedValue = upperQuantile * (1 + testAlpha)
-		} else {
-			maxExpectedValue = upperQuantile * (1 - testAlpha)
-		}
-		quantile := g.Quantile(q)
-		// TODO: be resilient to floating-point errors
-		assert.True(minExpectedValue <= quantile)
-		assert.True(quantile <= maxExpectedValue)
 	}
-	assert.Equal(d.Min(), g.min)
-	assert.Equal(d.Max(), g.max)
-	assert.InEpsilon(d.Sum(), g.sum, eps)
-	assert.Equal(d.Count, g.count)
 }
 
 func TestConstant(t *testing.T) {
-	for _, n := range testSizes {
-		constantGenerator := dataset.NewConstant(42)
-		EvaluateSketch(t, n, constantGenerator)
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			constantGenerator := dataset.NewConstant(float64(rand.Int()))
+			EvaluateSketch(t, n, constantGenerator, alpha)
+		}
 	}
 }
 
 func TestLinear(t *testing.T) {
-	for _, n := range testSizes {
-		linearGenerator := dataset.NewLinear()
-		EvaluateSketch(t, n, linearGenerator)
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			linearGenerator := dataset.NewLinear()
+			EvaluateSketch(t, n, linearGenerator, alpha)
+		}
 	}
 }
 
 func TestNormal(t *testing.T) {
-	for _, n := range testSizes {
-		normalGenerator := dataset.NewNormal(35, 1)
-		EvaluateSketch(t, n, normalGenerator)
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			normalGenerator := dataset.NewNormal(35, 1)
+			EvaluateSketch(t, n, normalGenerator, alpha)
+		}
 	}
 }
 
 func TestLognormal(t *testing.T) {
-	for _, n := range testSizes {
-		lognormalGenerator := dataset.NewLognormal(0, -2)
-		EvaluateSketch(t, n, lognormalGenerator)
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			lognormalGenerator := dataset.NewLognormal(0, -2)
+			EvaluateSketch(t, n, lognormalGenerator, alpha)
+		}
 	}
 }
 
 func TestExponential(t *testing.T) {
-	for _, n := range testSizes {
-		expGenerator := dataset.NewExponential(2)
-		EvaluateSketch(t, n, expGenerator)
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			expGenerator := dataset.NewExponential(2)
+			EvaluateSketch(t, n, expGenerator, alpha)
+		}
 	}
 }
-func TestMergeNormal(t *testing.T) {
-	for _, n := range testSizes {
-		d := dataset.NewDataset()
-		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g1 := NewDDSketch(c)
-		generator1 := dataset.NewNormal(35, 1)
-		for i := 0; i < n; i += 3 {
-			value := generator1.Generate()
-			g1.Add(value)
-			d.Add(value)
-		}
-		g2 := NewDDSketch(c)
-		generator2 := dataset.NewNormal(50, 2)
-		for i := 1; i < n; i += 3 {
-			value := generator2.Generate()
-			g2.Add(value)
-			d.Add(value)
-		}
-		g1.Merge(g2)
 
-		g3 := NewDDSketch(c)
-		generator3 := dataset.NewNormal(40, 0.5)
-		for i := 2; i < n; i += 3 {
-			value := generator3.Generate()
-			g3.Add(value)
-			d.Add(value)
+func TestMergeNormal(t *testing.T) {
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			data := dataset.NewDataset()
+			sketch1, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			generator1 := dataset.NewNormal(35, 1)
+			for i := 0; i < n; i += 3 {
+				value := generator1.Generate()
+				sketch1.Accept(value)
+				data.Add(value)
+			}
+			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			generator2 := dataset.NewNormal(50, 2)
+			for i := 1; i < n; i += 3 {
+				value := generator2.Generate()
+				sketch2.Accept(value)
+				data.Add(value)
+			}
+			sketch1.MergeWith(sketch2)
+
+			sketch3, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			generator3 := dataset.NewNormal(40, 0.5)
+			for i := 2; i < n; i += 3 {
+				value := generator3.Generate()
+				sketch3.Accept(value)
+				data.Add(value)
+			}
+			sketch1.MergeWith(sketch3)
+			AssertSketchesAccurate(t, data, sketch1, alpha)
 		}
-		g1.Merge(g3)
-		AssertSketchesAccurate(t, d, g1, c)
 	}
 }
 
 func TestMergeEmpty(t *testing.T) {
-	for _, n := range testSizes {
-		d := dataset.NewDataset()
-		// Merge a non-empty sketch to an empty sketch
-		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g1 := NewDDSketch(c)
-		g2 := NewDDSketch(c)
-		generator := dataset.NewExponential(5)
-		for i := 0; i < n; i++ {
-			value := generator.Generate()
-			g2.Add(value)
-			d.Add(value)
-		}
-		g1.Merge(g2)
-		AssertSketchesAccurate(t, d, g1, c)
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			data := dataset.NewDataset()
+			// Merge a non-empty sketch to an empty sketch
+			sketch1, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			generator := dataset.NewExponential(5)
+			for i := 0; i < n; i++ {
+				value := generator.Generate()
+				sketch2.Accept(value)
+				data.Add(value)
+			}
+			sketch1.MergeWith(sketch2)
+			AssertSketchesAccurate(t, data, sketch1, alpha)
 
-		// Merge an empty sketch to a non-empty sketch
-		g3 := NewDDSketch(c)
-		g2.Merge(g3)
-		AssertSketchesAccurate(t, d, g2, c)
+			// Merge an empty sketch to a non-empty sketch
+			sketch3, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch2.MergeWith(sketch3)
+			AssertSketchesAccurate(t, data, sketch2, alpha)
+			// Sketch3 should still be empty
+			assert.True(t, sketch3.IsEmpty())
+		}
 	}
 }
 
 func TestMergeMixed(t *testing.T) {
-	for _, n := range testSizes {
-		d := dataset.NewDataset()
-		c := NewConfig(testAlpha, testMaxBins, testMinValue)
-		g1 := NewDDSketch(c)
-		generator1 := dataset.NewNormal(100, 1)
-		for i := 0; i < n; i += 3 {
-			value := generator1.Generate()
-			g1.Add(value)
-			d.Add(value)
-		}
-		g2 := NewDDSketch(c)
-		generator2 := dataset.NewExponential(5)
-		for i := 1; i < n; i += 3 {
-			value := generator2.Generate()
-			g2.Add(value)
-			d.Add(value)
-		}
-		g1.Merge(g2)
+	for _, alpha := range testAlphas {
+		for _, n := range testSizes {
+			data := dataset.NewDataset()
+			sketch1, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			generator1 := dataset.NewNormal(100, 1)
+			for i := 0; i < n; i += 3 {
+				value := generator1.Generate()
+				sketch1.Accept(value)
+				data.Add(value)
+			}
+			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			generator2 := dataset.NewExponential(5)
+			for i := 1; i < n; i += 3 {
+				value := generator2.Generate()
+				sketch2.Accept(value)
+				data.Add(value)
+			}
+			sketch1.MergeWith(sketch2)
 
-		g3 := NewDDSketch(c)
-		generator3 := dataset.NewExponential(0.1)
-		for i := 2; i < n; i += 3 {
-			value := generator3.Generate()
-			g3.Add(value)
-			d.Add(value)
-		}
-		g1.Merge(g3)
+			sketch3, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			generator3 := dataset.NewExponential(0.1)
+			for i := 2; i < n; i += 3 {
+				value := generator3.Generate()
+				sketch3.Accept(value)
+				data.Add(value)
+			}
+			sketch1.MergeWith(sketch3)
 
-		AssertSketchesAccurate(t, d, g1, c)
+			AssertSketchesAccurate(t, data, sketch1, alpha)
+		}
 	}
 }
 
@@ -188,18 +197,43 @@ func TestConsistentQuantile(t *testing.T) {
 	var vals []float64
 	var q float64
 	nTests := 200
+	testAlpha := 0.01
 	vfuzzer := fuzz.New().NilChance(0).NumElements(10, 500)
 	fuzzer := fuzz.New()
-	c := NewConfig(testAlpha, testMaxBins, testMinValue)
 	for i := 0; i < nTests; i++ {
-		s := NewDDSketch(c)
+		sketch, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
 		vfuzzer.Fuzz(&vals)
 		fuzzer.Fuzz(&q)
 		for _, v := range vals {
-			s.Add(v)
+			sketch.Accept(v)
 		}
-		q1 := s.Quantile(q)
-		q2 := s.Quantile(q)
+		q1, _ := sketch.getValueAtQuantile(q)
+		q2, _ := sketch.getValueAtQuantile(q)
 		assert.Equal(t, q1, q2)
+	}
+}
+
+// Test that MergeWith() calls do not modify the argument sketch
+func TestConsistentMerge(t *testing.T) {
+	var vals []float64
+	nTests := 10
+	testAlpha := 0.01
+	testSize := 1000
+	fuzzer := fuzz.New().NilChance(0).NumElements(10, 1000)
+	sketch1, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
+	generator := dataset.NewNormal(50, 1)
+	for i := 0; i < testSize; i++ {
+		sketch1.Accept(generator.Generate())
+	}
+	for i := 0; i < nTests; i++ {
+		sketch2, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
+		fuzzer.Fuzz(&vals)
+		for _, v := range vals {
+			sketch2.Accept(v)
+		}
+		quantilesBeforeMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
+		sketch1.MergeWith(sketch2)
+		quantilesAfterMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
+		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
 	}
 }
