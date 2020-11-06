@@ -14,10 +14,10 @@ import (
 )
 
 var (
-	testMaxNumBins = []int32{8, 128, 1024}
+	testMaxNumBins = []int{8, 128, 1024}
 )
 
-func EvaluateValues(t *testing.T, store *DenseStore, values []int32, collapsingLowest bool, collapsingHighest bool) {
+func EvaluateValues(t *testing.T, store *DenseStore, values []int, collapsingLowest bool, collapsingHighest bool) {
 	var count float64
 	for _, b := range store.bins {
 		count += b
@@ -35,8 +35,8 @@ func EvaluateValues(t *testing.T, store *DenseStore, values []int32, collapsingL
 	}
 }
 
-func EvaluateBins(t *testing.T, bins []Bin, values []int32) {
-	var binValues []int32
+func EvaluateBins(t *testing.T, bins []Bin, values []int) {
+	var binValues []int
 	for _, b := range bins {
 		for i := 0; i < int(b.Count()); i++ {
 			binValues = append(binValues, b.Index())
@@ -55,10 +55,10 @@ func TestAdd(t *testing.T) {
 	for i := 0; i < nTests; i++ {
 		store = NewDenseStore()
 		f.Fuzz(&values)
-		var valuesInt []int32
+		var valuesInt []int
 		for _, v := range values {
-			store.Add(int32(v))
-			valuesInt = append(valuesInt, int32(v))
+			store.Add(int(v))
+			valuesInt = append(valuesInt, int(v))
 		}
 		EvaluateValues(t, store, valuesInt, false, false)
 	}
@@ -73,10 +73,10 @@ func TestBins(t *testing.T) {
 	for i := 0; i < nTests; i++ {
 		store = NewDenseStore()
 		f.Fuzz(&values)
-		var valuesInt []int32
+		var valuesInt []int
 		for _, v := range values {
-			store.Add(int32(v))
-			valuesInt = append(valuesInt, int32(v))
+			store.Add(int(v))
+			valuesInt = append(valuesInt, int(v))
 		}
 		var bins []Bin
 		for bin := range store.Bins() {
@@ -93,18 +93,18 @@ func TestMerge(t *testing.T) {
 	var store1, store2 *DenseStore
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
 	for i := 0; i < nTests; i++ {
-		var merged []int32
+		var merged []int
 		f.Fuzz(&values1)
 		store1 = NewDenseStore()
 		for _, v := range values1 {
-			store1.Add(int32(v))
-			merged = append(merged, int32(v))
+			store1.Add(int(v))
+			merged = append(merged, int(v))
 		}
 		f.Fuzz(&values2)
 		store2 = NewDenseStore()
 		for _, v := range values2 {
-			store2.Add(int32(v))
-			merged = append(merged, int32(v))
+			store2.Add(int(v))
+			merged = append(merged, int(v))
 		}
 		store1.MergeWith(store2)
 		EvaluateValues(t, store1, merged, false, false)
@@ -120,8 +120,8 @@ func EvaluateCollapsingLowestStore(t *testing.T, store *CollapsingLowestDenseSto
 	assert.Equal(t, count, float64(len(values)))
         sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
 	maxIndex, _ := store.MaxIndex()
-	assert.Equal(t, maxIndex, values[len(values)-1])
-	assert.GreaterOrEqual(t, store.maxNumBins, int32(len(store.bins)))
+	assert.Equal(t, maxIndex, int(values[len(values)-1]))
+	assert.GreaterOrEqual(t, store.maxNumBins, len(store.bins))
 }
 
 func EvaluateCollapsingHighestStore(t *testing.T, store *CollapsingHighestDenseStore, values []int32) {
@@ -133,13 +133,14 @@ func EvaluateCollapsingHighestStore(t *testing.T, store *CollapsingHighestDenseS
 	assert.Equal(t, count, float64(len(values)))
         sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
 	minIndex, _ := store.MinIndex()
-	assert.Equal(t, minIndex, values[0])
-	assert.GreaterOrEqual(t, store.maxNumBins, int32(len(store.bins)))
+	assert.Equal(t, minIndex, int(values[0]))
+	assert.GreaterOrEqual(t, store.maxNumBins, len(store.bins))
 }
 
 func TestCollapsingLowestAdd(t *testing.T) {
 	nTests := 100
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+        // Store indices are limited to the int32 range
 	var values []int32
 	var store *CollapsingLowestDenseStore
 	for i := 0; i < nTests; i++ {
@@ -147,7 +148,7 @@ func TestCollapsingLowestAdd(t *testing.T) {
 			store = NewCollapsingLowestDenseStore(maxNumBins)
 			f.Fuzz(&values)
 			for _, v := range values {
-				store.Add(v)
+				store.Add(int(v))
 			}
 			EvaluateCollapsingLowestStore(t, store, values)
 		}
@@ -157,6 +158,7 @@ func TestCollapsingLowestAdd(t *testing.T) {
 func TestCollapsingHighestAdd(t *testing.T) {
 	nTests := 100
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+        // Store indices are limited to the int32 range
 	var values []int32
 	var store *CollapsingHighestDenseStore
 	for i := 0; i < nTests; i++ {
@@ -164,7 +166,7 @@ func TestCollapsingHighestAdd(t *testing.T) {
 			store = NewCollapsingHighestDenseStore(maxNumBins)
 			f.Fuzz(&values)
 			for _, v := range values {
-				store.Add(v)
+				store.Add(int(v))
 			}
 			EvaluateCollapsingHighestStore(t, store, values)
 		}
@@ -175,10 +177,10 @@ func TestCollapsingLowest(t *testing.T) {
 	var store *CollapsingLowestDenseStore
 	for _, maxNumBins := range testMaxNumBins {
 		store = NewCollapsingLowestDenseStore(maxNumBins)
-		for i := int32(0); i < 2*maxNumBins; i++ {
+		for i := 0; i < 2*maxNumBins; i++ {
 			store.Add(i)
 		}
-		assert.Equal(t, int32(len(store.bins)), maxNumBins)
+		assert.Equal(t, len(store.bins), maxNumBins)
 		minIndex, _ := store.MinIndex()
 		assert.Equal(t, minIndex, maxNumBins)
 		maxIndex, _ := store.MaxIndex()
@@ -190,19 +192,19 @@ func TestCollapsingHighest(t *testing.T) {
 	var store *CollapsingHighestDenseStore
 	for _, maxNumBins := range testMaxNumBins {
 		store = NewCollapsingHighestDenseStore(maxNumBins)
-		for i := int32(0); i < 2*maxNumBins; i++ {
+		for i := 0; i < 2*maxNumBins; i++ {
 			store.Add(i)
 		}
-		assert.Equal(t, int32(len(store.bins)), maxNumBins)
+		assert.Equal(t, len(store.bins), maxNumBins)
 		minIndex, _ := store.MinIndex()
-		assert.Equal(t, minIndex, int32(0))
+		assert.Equal(t, minIndex, 0)
 		maxIndex, _ := store.MaxIndex()
 		assert.Equal(t, maxIndex, maxNumBins-1)
 	}
 }
 
 func EvaluateCollapsingBins(t *testing.T, bins []Bin, values []int32, lowest bool) {
-	var binValues []int32
+	var binValues []int
 	for _, b := range bins {
 		for i := 0; i < int(b.Count()); i++ {
 			binValues = append(binValues, b.Index())
@@ -211,15 +213,16 @@ func EvaluateCollapsingBins(t *testing.T, bins []Bin, values []int32, lowest boo
         sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
 	assert.Equal(t, len(binValues), len(values))
 	if lowest {
-		assert.Equal(t, binValues[len(binValues)-1], values[len(values)-1])
+		assert.Equal(t, binValues[len(binValues)-1], int(values[len(values)-1]))
 	} else {
-		assert.Equal(t, binValues[0], values[0])
+		assert.Equal(t, binValues[0], int(values[0]))
 	}
 }
 
 func TestCollapsingLowestBins(t *testing.T) {
 	nTests := 100
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+        // Store indices are limited to the int32 range
 	var values []int32
 	var store *CollapsingLowestDenseStore
 	for i := 0; i < nTests; i++ {
@@ -227,7 +230,7 @@ func TestCollapsingLowestBins(t *testing.T) {
 			store = NewCollapsingLowestDenseStore(maxNumBins)
 			f.Fuzz(&values)
 			for _, v := range values {
-				store.Add(v)
+				store.Add(int(v))
 			}
 			var bins []Bin
 			for bin := range store.Bins() {
@@ -241,6 +244,7 @@ func TestCollapsingLowestBins(t *testing.T) {
 func TestCollapsingHighestBins(t *testing.T) {
 	nTests := 100
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+        // Store indices are limited to the int32 range
 	var values []int32
 	var store *CollapsingHighestDenseStore
 	for i := 0; i < nTests; i++ {
@@ -248,7 +252,7 @@ func TestCollapsingHighestBins(t *testing.T) {
 			store = NewCollapsingHighestDenseStore(maxNumBins)
 			f.Fuzz(&values)
 			for _, v := range values {
-				store.Add(v)
+				store.Add(int(v))
 			}
 			var bins []Bin
 			for bin := range store.Bins() {
@@ -261,6 +265,7 @@ func TestCollapsingHighestBins(t *testing.T) {
 
 func TestCollapsingLowestMerge(t *testing.T) {
 	nTests := 100
+        // Store indices are limited to the int32 range
 	var values1, values2 []int32
 	var store1, store2 *CollapsingLowestDenseStore
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
@@ -270,12 +275,12 @@ func TestCollapsingLowestMerge(t *testing.T) {
 				f.Fuzz(&values1)
 				store1 = NewCollapsingLowestDenseStore(maxNumBins1)
 				for _, v := range values1 {
-					store1.Add(v)
+					store1.Add(int(v))
 				}
 				f.Fuzz(&values2)
 				store2 = NewCollapsingLowestDenseStore(maxNumBins2)
 				for _, v := range values2 {
-					store2.Add(v)
+					store2.Add(int(v))
 				}
 				store1.MergeWith(store2)
 				EvaluateCollapsingLowestStore(t, store1, append(values1, values2...))
@@ -286,6 +291,7 @@ func TestCollapsingLowestMerge(t *testing.T) {
 
 func TestCollapsingHighestMerge(t *testing.T) {
 	nTests := 100
+        // Store indices are limited to the int32 range
 	var values1, values2 []int32
 	var store1, store2 *CollapsingHighestDenseStore
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
@@ -295,12 +301,12 @@ func TestCollapsingHighestMerge(t *testing.T) {
 				f.Fuzz(&values1)
 				store1 = NewCollapsingHighestDenseStore(maxNumBins1)
 				for _, v := range values1 {
-					store1.Add(v)
+					store1.Add(int(v))
 				}
 				f.Fuzz(&values2)
 				store2 = NewCollapsingHighestDenseStore(maxNumBins2)
 				for _, v := range values2 {
-					store2.Add(v)
+					store2.Add(int(v))
 				}
 				store1.MergeWith(store2)
 				EvaluateCollapsingHighestStore(t, store1, append(values1, values2...))
@@ -320,21 +326,25 @@ func TestMixedMerge1(t *testing.T) {
 		for _, maxNumBins1 := range testMaxNumBins {
 			f.Fuzz(&values1)
 			store1 = NewCollapsingLowestDenseStore(maxNumBins1)
-			var valuesInt []int32
+			var valuesInt []int
 			for _, v := range values1 {
-				store1.Add(int32(v))
-				valuesInt = append(valuesInt, int32(v))
+				store1.Add(int(v))
+				valuesInt = append(valuesInt, int(v))
 			}
 			f.Fuzz(&values2)
 			store2 = NewDenseStore()
 			for _, v := range values2 {
-				store2.Add(int32(v))
-				valuesInt = append(valuesInt, int32(v))
+				store2.Add(int(v))
+				valuesInt = append(valuesInt, int(v))
 			}
-			if nTests/2 == 0 {
+                        if nTests/2 == 0 {
 				// Merge DenseStore to CollapsingLowestDenseStore
 				store1.MergeWith(store2)
-				EvaluateCollapsingLowestStore(t, store1, valuesInt)
+                                var valuesInt32 []int32
+                                for _, v := range valuesInt {
+                                        valuesInt32 = append(valuesInt32, int32(v))
+                                }
+				EvaluateCollapsingLowestStore(t, store1, valuesInt32)
 			} else {
 				// Merge CollapsingLowestDenseStore to DenseStore
 				store2.MergeWith(store1)
@@ -355,21 +365,25 @@ func TestMixedMerge2(t *testing.T) {
 		for _, maxNumBins1 := range testMaxNumBins {
 			f.Fuzz(&values1)
 			store1 = NewCollapsingHighestDenseStore(maxNumBins1)
-			var valuesInt []int32
+			var valuesInt []int
 			for _, v := range values1 {
-				store1.Add(int32(v))
-				valuesInt = append(valuesInt, int32(v))
+				store1.Add(int(v))
+				valuesInt = append(valuesInt, int(v))
 			}
 			f.Fuzz(&values2)
 			store2 = NewDenseStore()
 			for _, v := range values2 {
-				store2.Add(int32(v))
-				valuesInt = append(valuesInt, int32(v))
+				store2.Add(int(v))
+				valuesInt = append(valuesInt, int(v))
 			}
 			if nTests/2 == 0 {
 				// Merge DenseStore to CollapsingHighestDenseStore
 				store1.MergeWith(store2)
-				EvaluateCollapsingHighestStore(t, store1, valuesInt)
+                                var valuesInt32 []int32
+                                for _, v := range valuesInt {
+                                        valuesInt32 = append(valuesInt32, int32(v))
+                                } 
+				EvaluateCollapsingHighestStore(t, store1, valuesInt32)
 			} else {
 				// Merge CollapsingHighestDenseStore to DenseStore
 				store2.MergeWith(store1)
@@ -381,14 +395,15 @@ func TestMixedMerge2(t *testing.T) {
 
 func TestSerialization(t *testing.T) {
 	nTests := 100
-	var values []int32
+        // Store indices are limited to the int32 range
+        var values []int32
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
 	for i := 0; i < nTests; i++ {
 		for _, maxNumBins := range testMaxNumBins {
 			f.Fuzz(&values)
 			store := NewCollapsingLowestDenseStore(maxNumBins)
 			for _, v := range values {
-				store.Add(v)
+				store.Add(int(v))
 			}
 			deserializedStore := NewCollapsingLowestDenseStore(maxNumBins)
 			deserializedStore.FromProto(store.ToProto())

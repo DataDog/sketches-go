@@ -23,15 +23,15 @@ const (
 type DenseStore struct {
 	bins     []float64
 	count    float64
-	minIndex int32
-	maxIndex int32
+	minIndex int
+	maxIndex int
 }
 
 func NewDenseStore() *DenseStore {
 	return &DenseStore{}
 }
 
-func (s *DenseStore) Add(index int32) {
+func (s *DenseStore) Add(index int) {
 	s.addWithCount(index, float64(1))
 }
 
@@ -44,11 +44,11 @@ func (s *DenseStore) AddBin(bin Bin) {
 	s.addWithCount(index, count)
 }
 
-func (s *DenseStore) addWithCount(index int32, count float64) {
+func (s *DenseStore) addWithCount(index int, count float64) {
 	if s.count == 0 {
 		s.bins = make([]float64, growthBuffer)
 		s.maxIndex = index
-		s.minIndex = index - int32(len(s.bins)) + 1
+		s.minIndex = index - len(s.bins) + 1
 	}
 	if index < s.minIndex {
 		s.growLeft(index)
@@ -68,19 +68,19 @@ func (s *DenseStore) TotalCount() float64 {
 	return s.count
 }
 
-func (s *DenseStore) MinIndex() (int32, error) {
+func (s *DenseStore) MinIndex() (int, error) {
 	if s.count == 0 {
 		return 0, errors.New("MinIndex of empty store is undefined.")
 	}
 	for i, b := range s.bins {
 		if b > 0 {
-			return int32(i) + s.minIndex, nil
+			return i + s.minIndex, nil
 		}
 	}
 	return s.maxIndex, nil
 }
 
-func (s *DenseStore) MaxIndex() (int32, error) {
+func (s *DenseStore) MaxIndex() (int, error) {
 	if s.count == 0 {
 		return 0, errors.New("MaxIndex of empty store is undefined.")
 	}
@@ -93,21 +93,21 @@ func (s *DenseStore) MaxIndex() (int32, error) {
 }
 
 // Return the key for the value at rank
-func (s *DenseStore) KeyAtRank(rank float64) int32 {
+func (s *DenseStore) KeyAtRank(rank float64) int {
 	var n float64
 	for i, b := range s.bins {
 		n += b
 		if n > rank {
-			return int32(i) + s.minIndex
+			return i + s.minIndex
 		}
 	}
 	return s.maxIndex
 }
 
 // Return the key for the value at rank from the highest bin
-func (s *DenseStore) KeyAtDescendingRank(rank float64) int32 {
+func (s *DenseStore) KeyAtDescendingRank(rank float64) int {
 	var n float64
-	for i := int32(len(s.bins)) - 1; i >= 0; i-- {
+	for i := len(s.bins) - 1; i >= 0; i-- {
 		n += s.bins[i]
 		if n > rank {
 			return i + s.minIndex
@@ -116,7 +116,7 @@ func (s *DenseStore) KeyAtDescendingRank(rank float64) int32 {
 	return s.minIndex
 }
 
-func (s *DenseStore) growLeft(index int32) {
+func (s *DenseStore) growLeft(index int) {
 	if s.minIndex < index {
 		return
 	}
@@ -130,7 +130,7 @@ func (s *DenseStore) growLeft(index int32) {
 	s.minIndex = minIndex
 }
 
-func (s *DenseStore) growRight(index int32) {
+func (s *DenseStore) growRight(index int) {
 	if s.maxIndex > index {
 		return
 	}
@@ -196,7 +196,7 @@ func (s *DenseStore) string() string {
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for i := 0; i < len(s.bins); i++ {
-		index := int32(i) + s.minIndex
+		index := i + s.minIndex
 		buffer.WriteString(fmt.Sprintf("%d: %f, ", index, s.bins[i]))
 	}
 	buffer.WriteString(fmt.Sprintf("count: %v, minIndex: %d, maxIndex: %d}", s.count, s.minIndex, s.maxIndex))
@@ -219,9 +219,9 @@ func (s *DenseStore) FromProto(pb *sketchpb.Store) {
 	s.minIndex = 0
 	s.maxIndex = 0
 	for idx, count := range pb.BinCounts {
-		s.addWithCount(idx, count)
+		s.addWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
-		s.addWithCount(int32(idx)+pb.ContiguousBinIndexOffset, count)
+		s.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
 }

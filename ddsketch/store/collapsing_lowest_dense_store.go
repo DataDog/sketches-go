@@ -13,17 +13,17 @@ import (
 // The lower bins get combined so that the total number of bins do not exceed maxNumBins.
 type CollapsingLowestDenseStore struct {
 	DenseStore
-	maxNumBins int32
+	maxNumBins int
 }
 
-func NewCollapsingLowestDenseStore(maxNumBins int32) *CollapsingLowestDenseStore {
+func NewCollapsingLowestDenseStore(maxNumBins int) *CollapsingLowestDenseStore {
 	// Bins are not allocated until values are added.
 	// When the first value is added, a small number of bins are allocated. The number of bins will
 	// grow as needed up to maxNumBins.
 	return &CollapsingLowestDenseStore{maxNumBins: maxNumBins}
 }
 
-func (s *CollapsingLowestDenseStore) Add(index int32) {
+func (s *CollapsingLowestDenseStore) Add(index int) {
 	s.addWithCount(index, float64(1))
 }
 
@@ -36,18 +36,18 @@ func (s *CollapsingLowestDenseStore) AddBins(bin Bin) {
 	s.addWithCount(index, count)
 }
 
-func (s *CollapsingLowestDenseStore) addWithCount(index int32, count float64) {
+func (s *CollapsingLowestDenseStore) addWithCount(index int, count float64) {
 	if s.count == 0 {
 		s.bins = make([]float64, min(growthBuffer, s.maxNumBins))
 		s.maxIndex = index
-		s.minIndex = index - int32(len(s.bins)) + 1
+		s.minIndex = index - len(s.bins) + 1
 	}
 	if index < s.minIndex {
 		s.growLeft(index)
 	} else if index > s.maxIndex {
 		s.growRight(index)
 	}
-	var idx int32
+	var idx int
 	if index < s.minIndex {
 		idx = 0
 	} else {
@@ -57,12 +57,12 @@ func (s *CollapsingLowestDenseStore) addWithCount(index int32, count float64) {
 	s.count += count
 }
 
-func (s *CollapsingLowestDenseStore) growLeft(index int32) {
-	if s.minIndex < index || int32(len(s.bins)) >= s.maxNumBins {
+func (s *CollapsingLowestDenseStore) growLeft(index int) {
+	if s.minIndex < index || len(s.bins) >= s.maxNumBins {
 		return
 	}
 
-	var minIndex int32
+	var minIndex int
 	if s.maxIndex >= index+s.maxNumBins {
 		minIndex = s.maxIndex - s.maxNumBins + 1
 	} else {
@@ -75,7 +75,7 @@ func (s *CollapsingLowestDenseStore) growLeft(index int32) {
 	s.minIndex = minIndex
 }
 
-func (s *CollapsingLowestDenseStore) growRight(index int32) {
+func (s *CollapsingLowestDenseStore) growRight(index int) {
 	if s.maxIndex > index {
 		return
 	}
@@ -90,7 +90,7 @@ func (s *CollapsingLowestDenseStore) growRight(index int32) {
 		for i := s.minIndex; i <= min(minIndex-1, s.maxIndex); i++ {
 			n += s.bins[i-s.minIndex]
 		}
-		if int32(len(s.bins)) < s.maxNumBins {
+		if len(s.bins) < s.maxNumBins {
 			tmpBins := make([]float64, s.maxNumBins)
 			copy(tmpBins, s.bins[minIndex-s.minIndex:])
 			s.bins = tmpBins
@@ -169,21 +169,21 @@ func (s *CollapsingLowestDenseStore) FromProto(pb *sketchpb.Store) {
 	s.minIndex = 0
 	s.maxIndex = 0
 	for idx, count := range pb.BinCounts {
-		s.addWithCount(idx, count)
+		s.addWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
-		s.addWithCount(int32(idx)+pb.ContiguousBinIndexOffset, count)
+		s.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
 }
 
-func max(x, y int32) int32 {
+func max(x, y int) int {
 	if x > y {
 		return x
 	}
 	return y
 }
 
-func min(x, y int32) int32 {
+func min(x, y int) int {
 	if x < y {
 		return x
 	}

@@ -46,16 +46,16 @@ func (m *LinearlyInterpolatedMapping) Equals(other IndexMapping) bool {
 	return (withinTolerance(m.relativeAccuracy, o.relativeAccuracy, 1e-12) && withinTolerance(m.multiplier, o.multiplier, 1e-12))
 }
 
-func (m *LinearlyInterpolatedMapping) Index(value float64) int32 {
+func (m *LinearlyInterpolatedMapping) Index(value float64) int {
 	index := m.approximateLog(value) * m.multiplier
 	if index >= 0 {
-		return int32(index)
+		return int(index)
 	} else {
-		return int32(index) - 1
+		return int(index) - 1
 	}
 }
 
-func (m *LinearlyInterpolatedMapping) Value(index int32) float64 {
+func (m *LinearlyInterpolatedMapping) Value(index int) float64 {
 	return m.approximateInverseLog(float64(index)/m.multiplier) * (1 + m.relativeAccuracy)
 }
 

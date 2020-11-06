@@ -10,18 +10,18 @@ import (
 )
 
 type Bin struct {
-	index int32
+	index int
 	count float64
 }
 
-func NewBin(index int32, count float64) (*Bin, error) {
+func NewBin(index int, count float64) (*Bin, error) {
 	if count < 0 {
 		return nil, errors.New("The count cannot be negative")
 	}
 	return &Bin{index: index, count: count}, nil
 }
 
-func (b *Bin) Index() int32 {
+func (b *Bin) Index() int {
 	return b.index
 }
 

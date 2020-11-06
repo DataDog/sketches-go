@@ -15,8 +15,8 @@ const (
 
 type IndexMapping interface {
 	Equals(other IndexMapping) bool
-	Index(value float64) int32
-	Value(index int32) float64
+	Index(value float64) int
+	Value(index int) float64
 	RelativeAccuracy() float64
 	MinIndexableValue() float64
 	MaxIndexableValue() float64

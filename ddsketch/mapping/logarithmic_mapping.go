@@ -37,16 +37,16 @@ func (m *LogarithmicMapping) Equals(other IndexMapping) bool {
 	return (withinTolerance(m.relativeAccuracy, o.relativeAccuracy, 1e-12) && withinTolerance(m.multiplier, o.multiplier, 1e-12))
 }
 
-func (m *LogarithmicMapping) Index(value float64) int32 {
+func (m *LogarithmicMapping) Index(value float64) int {
 	index := math.Log(value) * m.multiplier
 	if index >= 0 {
-		return int32(index)
+		return int(index)
 	} else {
-		return int32(index) - 1 // faster than Math.Floor
+		return int(index) - 1 // faster than Math.Floor
 	}
 }
 
-func (m *LogarithmicMapping) Value(index int32) float64 {
+func (m *LogarithmicMapping) Value(index int) float64 {
 	return math.Exp((float64(index) / m.multiplier)) * (1 + m.relativeAccuracy)
 }
 

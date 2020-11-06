@@ -10,15 +10,15 @@ import (
 )
 
 type Store interface {
-	Add(index int32)
+	Add(index int)
 	AddBin(bin Bin)
 	Bins() <-chan Bin
 	IsEmpty() bool
-	MaxIndex() (int32, error)
-	MinIndex() (int32, error)
+	MaxIndex() (int, error)
+	MinIndex() (int, error)
 	TotalCount() float64
-	KeyAtRank(rank float64) int32
-	KeyAtDescendingRank(rank float64) int32
+	KeyAtRank(rank float64) int
+	KeyAtDescendingRank(rank float64) int
 	MergeWith(store Store)
 	ToProto() *sketchpb.Store
 	FromProto(pb *sketchpb.Store)

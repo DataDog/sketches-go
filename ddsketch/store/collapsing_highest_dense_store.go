@@ -7,27 +7,27 @@ package store
 
 type CollapsingHighestDenseStore struct {
 	DenseStore
-	maxNumBins int32
+	maxNumBins int
 }
 
-func NewCollapsingHighestDenseStore(maxNumBins int32) *CollapsingHighestDenseStore {
+func NewCollapsingHighestDenseStore(maxNumBins int) *CollapsingHighestDenseStore {
 	return &CollapsingHighestDenseStore{maxNumBins: maxNumBins}
 }
 
-func (s *CollapsingHighestDenseStore) Add(index int32) {
+func (s *CollapsingHighestDenseStore) Add(index int) {
 	if s.count == 0 {
 		s.bins = make([]float64, min(growthBuffer, s.maxNumBins))
 		s.minIndex = index
-		s.maxIndex = index + int32(len(s.bins)) - 1
+		s.maxIndex = index + len(s.bins) - 1
 	}
 	if index < s.minIndex {
 		s.growLeft(index)
 	} else if index > s.maxIndex {
 		s.growRight(index)
 	}
-	var idx int32
+	var idx int
 	if index > s.maxIndex {
-		idx = int32(len(s.bins)) - 1
+		idx = len(s.bins) - 1
 	} else {
 		idx = index - s.minIndex
 	}
@@ -35,7 +35,7 @@ func (s *CollapsingHighestDenseStore) Add(index int32) {
 	s.count++
 }
 
-func (s *CollapsingHighestDenseStore) growLeft(index int32) {
+func (s *CollapsingHighestDenseStore) growLeft(index int) {
 	if s.minIndex < index {
 		return
 	}
@@ -50,13 +50,13 @@ func (s *CollapsingHighestDenseStore) growLeft(index int32) {
 		for i := max(s.minIndex, maxIndex+1); i <= s.maxIndex; i++ {
 			n += s.bins[i-s.minIndex]
 		}
-		if int32(len(s.bins)) < s.maxNumBins {
+		if len(s.bins) < s.maxNumBins {
 			tmpBins := make([]float64, s.maxNumBins)
 			copy(tmpBins[s.minIndex-index:], s.bins)
 			s.bins = tmpBins
 		} else {
 			copy(s.bins[s.minIndex-index:], s.bins)
-			for i := int32(0); i < s.minIndex-index; i++ {
+			for i := 0; i < s.minIndex-index; i++ {
 				s.bins[i] = 0.0
 			}
 		}
@@ -71,11 +71,11 @@ func (s *CollapsingHighestDenseStore) growLeft(index int32) {
 	}
 }
 
-func (s *CollapsingHighestDenseStore) growRight(index int32) {
-	if s.maxIndex > index || int32(len(s.bins)) >= s.maxNumBins {
+func (s *CollapsingHighestDenseStore) growRight(index int) {
+	if s.maxIndex > index || len(s.bins) >= s.maxNumBins {
 		return
 	}
-	var maxIndex int32
+	var maxIndex int
 	if index >= s.minIndex+s.maxNumBins {
 		maxIndex = s.minIndex + s.maxNumBins - 1
 	} else {
@@ -127,7 +127,7 @@ func (s *CollapsingHighestDenseStore) AddBin(bin Bin) {
 	} else if index > s.maxIndex {
 		s.growRight(index)
 	}
-	var idx int32
+	var idx int
 	if index > s.maxIndex {
 		idx = s.maxIndex - s.minIndex
 	} else {

@@ -34,7 +34,7 @@ func MemoryOptimalCollapsingLowestSketch(relativeAccuracy float64, maxNumBins in
 	if err != nil {
 		return nil, err
 	}
-	return NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(int32(maxNumBins)), store.NewCollapsingHighestDenseStore(int32(maxNumBins))), nil
+	return NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(maxNumBins), store.NewCollapsingHighestDenseStore(maxNumBins)), nil
 }
 
 func (s *DDSketch) Accept(value float64) error {
