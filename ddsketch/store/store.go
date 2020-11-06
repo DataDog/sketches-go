@@ -5,14 +5,21 @@
 
 package store
 
+import (
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
+)
+
 type Store interface {
-	Add(index int)
+	Add(index int32)
 	AddBin(bin Bin)
 	Bins() <-chan Bin
 	IsEmpty() bool
-	MaxIndex() (int, error)
-	MinIndex() (int, error)
+	MaxIndex() (int32, error)
+	MinIndex() (int32, error)
 	TotalCount() float64
-	KeyAtRank(rank float64) int
+	KeyAtRank(rank float64) int32
+	KeyAtDescendingRank(rank float64) int32
 	MergeWith(store Store)
+	ToProto() *sketchpb.Store
+	FromProto(pb *sketchpb.Store)
 }

@@ -6,6 +6,7 @@
 package ddsketch
 
 import (
+	"math"
 	"math/rand"
 	"testing"
 
@@ -34,6 +35,17 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 		data.Add(value)
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
+	// Add negative numbers
+	for i := 0; i < n; i++ {
+		value := gen.Generate()
+		sketch.Accept(-value)
+		data.Add(-value)
+	}
+	AssertSketchesAccurate(t, data, sketch, alpha)
+	// Serialize/deserialize the sketch
+	deserializedSketch, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+	deserializedSketch.FromProto(sketch.ToProto())
+	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }
 
 func AssertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch *DDSketch, alpha float64) {
@@ -45,8 +57,8 @@ func AssertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch *DDSketc
 		for _, q := range testQuantiles {
 			lowerQuantile := data.LowerQuantile(q)
 			upperQuantile := data.UpperQuantile(q)
-			minExpectedValue := lowerQuantile * (1 - alpha)
-			maxExpectedValue := upperQuantile * (1 + alpha)
+			minExpectedValue := math.Min(lowerQuantile*(1-alpha), lowerQuantile*(1+alpha))
+			maxExpectedValue := math.Max(upperQuantile*(1-alpha), upperQuantile*(1+alpha))
 			quantile, _ := sketch.getValueAtQuantile(q)
 			assert.True(quantile >= minExpectedValue-floatingPointAcceptableError)
 			assert.True(quantile <= maxExpectedValue+floatingPointAcceptableError)
@@ -93,7 +105,7 @@ func TestLognormal(t *testing.T) {
 func TestExponential(t *testing.T) {
 	for _, alpha := range testAlphas {
 		for _, n := range testSizes {
-			expGenerator := dataset.NewExponential(2)
+			expGenerator := dataset.NewExponential(1.5)
 			EvaluateSketch(t, n, expGenerator, alpha)
 		}
 	}
@@ -111,7 +123,7 @@ func TestMergeNormal(t *testing.T) {
 				data.Add(value)
 			}
 			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
-			generator2 := dataset.NewNormal(50, 2)
+			generator2 := dataset.NewNormal(-10, 2)
 			for i := 1; i < n; i += 3 {
 				value := generator2.Generate()
 				sketch2.Accept(value)

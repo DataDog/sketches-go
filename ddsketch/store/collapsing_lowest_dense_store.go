@@ -5,47 +5,64 @@
 
 package store
 
+import (
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
+)
+
 // CollapsingLowestDenseStore is a dynamically growing contiguous (non-sparse) store.
 // The lower bins get combined so that the total number of bins do not exceed maxNumBins.
 type CollapsingLowestDenseStore struct {
 	DenseStore
-	maxNumBins int
+	maxNumBins int32
 }
 
-func NewCollapsingLowestDenseStore(maxNumBins int) *CollapsingLowestDenseStore {
+func NewCollapsingLowestDenseStore(maxNumBins int32) *CollapsingLowestDenseStore {
 	// Bins are not allocated until values are added.
 	// When the first value is added, a small number of bins are allocated. The number of bins will
 	// grow as needed up to maxNumBins.
 	return &CollapsingLowestDenseStore{maxNumBins: maxNumBins}
 }
 
-func (s *CollapsingLowestDenseStore) Add(index int) {
+func (s *CollapsingLowestDenseStore) Add(index int32) {
+	s.addWithCount(index, float64(1))
+}
+
+func (s *CollapsingLowestDenseStore) AddBins(bin Bin) {
+	index := bin.Index()
+	count := bin.Count()
+	if count == 0 {
+		return
+	}
+	s.addWithCount(index, count)
+}
+
+func (s *CollapsingLowestDenseStore) addWithCount(index int32, count float64) {
 	if s.count == 0 {
 		s.bins = make([]float64, min(growthBuffer, s.maxNumBins))
 		s.maxIndex = index
-		s.minIndex = index - len(s.bins) + 1
+		s.minIndex = index - int32(len(s.bins)) + 1
 	}
 	if index < s.minIndex {
 		s.growLeft(index)
 	} else if index > s.maxIndex {
 		s.growRight(index)
 	}
-	var idx int
+	var idx int32
 	if index < s.minIndex {
 		idx = 0
 	} else {
 		idx = index - s.minIndex
 	}
-	s.bins[idx]++
-	s.count++
+	s.bins[idx] += count
+	s.count += count
 }
 
-func (s *CollapsingLowestDenseStore) growLeft(index int) {
-	if s.minIndex < index || len(s.bins) >= s.maxNumBins {
+func (s *CollapsingLowestDenseStore) growLeft(index int32) {
+	if s.minIndex < index || int32(len(s.bins)) >= s.maxNumBins {
 		return
 	}
 
-	var minIndex int
+	var minIndex int32
 	if s.maxIndex >= index+s.maxNumBins {
 		minIndex = s.maxIndex - s.maxNumBins + 1
 	} else {
@@ -58,7 +75,7 @@ func (s *CollapsingLowestDenseStore) growLeft(index int) {
 	s.minIndex = minIndex
 }
 
-func (s *CollapsingLowestDenseStore) growRight(index int) {
+func (s *CollapsingLowestDenseStore) growRight(index int32) {
 	if s.maxIndex > index {
 		return
 	}
@@ -70,10 +87,10 @@ func (s *CollapsingLowestDenseStore) growRight(index int) {
 	} else if index >= s.minIndex+s.maxNumBins {
 		minIndex := index - s.maxNumBins + 1
 		var n float64
-		for i := s.minIndex; i < minIndex && i <= s.maxIndex; i++ {
+		for i := s.minIndex; i <= min(minIndex-1, s.maxIndex); i++ {
 			n += s.bins[i-s.minIndex]
 		}
-		if len(s.bins) < s.maxNumBins {
+		if int32(len(s.bins)) < s.maxNumBins {
 			tmpBins := make([]float64, s.maxNumBins)
 			copy(tmpBins, s.bins[minIndex-s.minIndex:])
 			s.bins = tmpBins
@@ -87,12 +104,10 @@ func (s *CollapsingLowestDenseStore) growRight(index int) {
 		s.minIndex = minIndex
 		s.bins[0] += n
 	} else {
-		// Expand bins by up to an extra growthBuffer bins than strictly required.
-		maxIndex := min(index+growthBuffer, s.minIndex+s.maxNumBins-1)
-		tmpBins := make([]float64, maxIndex-s.minIndex+1)
+		tmpBins := make([]float64, index-s.minIndex+1)
 		copy(tmpBins, s.bins)
 		s.bins = tmpBins
-		s.maxIndex = maxIndex
+		s.maxIndex = index
 	}
 }
 
@@ -124,22 +139,6 @@ func (s *CollapsingLowestDenseStore) MergeWith(other Store) {
 	s.count += o.count
 }
 
-func (s *CollapsingLowestDenseStore) AddBin(bin Bin) {
-	index := bin.Index()
-	count := bin.Count()
-	if count == 0 {
-		return
-	}
-	if index < s.minIndex {
-		s.growLeft(index)
-	} else if index > s.maxIndex {
-		s.growRight(index)
-	}
-	idx := max(0, index-s.minIndex)
-	s.bins[idx] += count
-	s.count += count
-}
-
 func (s *CollapsingLowestDenseStore) copy(o *CollapsingLowestDenseStore) {
 	s.bins = make([]float64, len(o.bins))
 	copy(s.bins, o.bins)
@@ -163,14 +162,28 @@ func (s *CollapsingLowestDenseStore) makeCopy() *CollapsingLowestDenseStore {
 	}
 }
 
-func max(x, y int) int {
+func (s *CollapsingLowestDenseStore) FromProto(pb *sketchpb.Store) {
+	// Reset the store.
+	s.count = 0
+	s.bins = nil
+	s.minIndex = 0
+	s.maxIndex = 0
+	for idx, count := range pb.BinCounts {
+		s.addWithCount(idx, count)
+	}
+	for idx, count := range pb.ContiguousBinCounts {
+		s.addWithCount(int32(idx)+pb.ContiguousBinIndexOffset, count)
+	}
+}
+
+func max(x, y int32) int32 {
 	if x > y {
 		return x
 	}
 	return y
 }
 
-func min(x, y int) int {
+func min(x, y int32) int32 {
 	if x < y {
 		return x
 	}
