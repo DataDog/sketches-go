@@ -249,3 +249,22 @@ func TestConsistentMerge(t *testing.T) {
 		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
 	}
 }
+
+func TestProto(t *testing.T) {
+	sketch, _ := MemoryOptimalCollapsingLowestSketch(0.9, 20)
+
+	for i := 0; i < 500; i++ {
+		v := rand.NormFloat64()
+		sketch.Accept(v)
+	}
+	sketch2, _ := MemoryOptimalCollapsingLowestSketch(0.9, 20)
+	sketch2.FromProto(sketch.ToProto())
+
+	qs := []float64{0.5, 0.75, 0.9, 1}
+	for _, q := range qs {
+		q1, _ := sketch.getValueAtQuantile(q)
+		q2, _ := sketch2.getValueAtQuantile(q)
+		assert.Equal(t, q1, q2)
+	}
+	assert.Equal(t, sketch, sketch2)
+}

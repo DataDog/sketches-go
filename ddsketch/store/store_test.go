@@ -382,7 +382,7 @@ func TestMixedMerge2(t *testing.T) {
                                 var valuesInt32 []int32
                                 for _, v := range valuesInt {
                                         valuesInt32 = append(valuesInt32, int32(v))
-                                } 
+                                }
 				EvaluateCollapsingHighestStore(t, store1, valuesInt32)
 			} else {
 				// Merge CollapsingHighestDenseStore to DenseStore
@@ -401,16 +401,18 @@ func TestSerialization(t *testing.T) {
 	for i := 0; i < nTests; i++ {
 		for _, maxNumBins := range testMaxNumBins {
 			f.Fuzz(&values)
-			store := NewCollapsingLowestDenseStore(maxNumBins)
+			storeLow := NewCollapsingLowestDenseStore(maxNumBins)
+                        storeHigh := NewCollapsingHighestDenseStore(maxNumBins)
 			for _, v := range values {
-				store.Add(int(v))
+				storeLow.Add(int(v))
+                                storeHigh.Add(int(v))
 			}
-			deserializedStore := NewCollapsingLowestDenseStore(maxNumBins)
-			deserializedStore.FromProto(store.ToProto())
-			assert.Equal(t, store.count, deserializedStore.count)
-			assert.Equal(t, store.minIndex, deserializedStore.minIndex)
-			assert.Equal(t, store.maxIndex, deserializedStore.maxIndex)
-			assert.InDeltaSlice(t, store.bins, deserializedStore.bins, 1e-12)
+			deserializedStoreLow := NewCollapsingLowestDenseStore(maxNumBins)
+			deserializedStoreLow.FromProto(storeLow.ToProto())
+                        assert.Equal(t, storeLow, deserializedStoreLow)
+			deserializedStoreHigh := NewCollapsingHighestDenseStore(maxNumBins)
+			deserializedStoreHigh.FromProto(storeHigh.ToProto())
+                        assert.Equal(t, storeHigh, deserializedStoreHigh)
 		}
 	}
 }

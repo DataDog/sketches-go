@@ -27,7 +27,7 @@ func (s *CollapsingLowestDenseStore) Add(index int) {
 	s.addWithCount(index, float64(1))
 }
 
-func (s *CollapsingLowestDenseStore) AddBins(bin Bin) {
+func (s *CollapsingLowestDenseStore) AddBin(bin Bin) {
 	index := bin.Index()
 	count := bin.Count()
 	if count == 0 {

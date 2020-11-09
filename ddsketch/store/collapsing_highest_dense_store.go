@@ -5,6 +5,9 @@
 
 package store
 
+import "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
+
+
 type CollapsingHighestDenseStore struct {
 	DenseStore
 	maxNumBins int
@@ -15,6 +18,20 @@ func NewCollapsingHighestDenseStore(maxNumBins int) *CollapsingHighestDenseStore
 }
 
 func (s *CollapsingHighestDenseStore) Add(index int) {
+        s.addWithCount(index, float64(1))
+}
+
+func (s *CollapsingHighestDenseStore) AddBin(bin Bin) {
+	index := bin.Index()
+	count := bin.Count()
+	if count == 0 {
+		return
+	}
+        s.addWithCount(index, count)
+}
+
+
+func (s *CollapsingHighestDenseStore) addWithCount(index int, count float64) {
 	if s.count == 0 {
 		s.bins = make([]float64, min(growthBuffer, s.maxNumBins))
 		s.minIndex = index
@@ -31,8 +48,8 @@ func (s *CollapsingHighestDenseStore) Add(index int) {
 	} else {
 		idx = index - s.minIndex
 	}
-	s.bins[idx]++
-	s.count++
+	s.bins[idx] += count
+	s.count += count
 }
 
 func (s *CollapsingHighestDenseStore) growLeft(index int) {
@@ -116,27 +133,6 @@ func (s *CollapsingHighestDenseStore) MergeWith(other Store) {
 	s.count += o.count
 }
 
-func (s *CollapsingHighestDenseStore) AddBin(bin Bin) {
-	index := bin.Index()
-	count := bin.Count()
-	if count == 0 {
-		return
-	}
-	if index < s.minIndex {
-		s.growLeft(index)
-	} else if index > s.maxIndex {
-		s.growRight(index)
-	}
-	var idx int
-	if index > s.maxIndex {
-		idx = s.maxIndex - s.minIndex
-	} else {
-		idx = index - s.minIndex
-	}
-	s.bins[idx] += count
-	s.count += count
-}
-
 func (s *CollapsingHighestDenseStore) copy(o *CollapsingHighestDenseStore) {
 	s.bins = make([]float64, len(o.bins))
 	copy(s.bins, o.bins)
@@ -144,4 +140,18 @@ func (s *CollapsingHighestDenseStore) copy(o *CollapsingHighestDenseStore) {
 	s.maxIndex = o.maxIndex
 	s.count = o.count
 	s.maxNumBins = o.maxNumBins
+}
+
+func (s *CollapsingHighestDenseStore) FromProto(pb *sketchpb.Store) {
+	// Reset the store.
+	s.count = 0
+	s.bins = nil
+	s.minIndex = 0
+	s.maxIndex = 0
+	for idx, count := range pb.BinCounts {
+		s.addWithCount(int(idx), count)
+	}
+	for idx, count := range pb.ContiguousBinCounts {
+		s.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+	}
 }
