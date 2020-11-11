@@ -65,7 +65,7 @@ func (s *DDSketch) getValueAtQuantile(quantile float64) (float64, error) {
 	rank := quantile * (count - 1)
 	negativeValueCount := s.negativeValueStore.TotalCount()
 	if rank < negativeValueCount {
-		return -s.Value(s.negativeValueStore.KeyAtDescendingRank(rank)), nil
+		return -s.Value(s.negativeValueStore.KeyAtRank(negativeValueCount - 1 - rank)), nil
 	} else if rank < s.zeroCount+negativeValueCount {
 		return 0, nil
 	} else {

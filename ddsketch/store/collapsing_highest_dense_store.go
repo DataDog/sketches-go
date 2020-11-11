@@ -7,7 +7,6 @@ package store
 
 import "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 
-
 type CollapsingHighestDenseStore struct {
 	DenseStore
 	maxNumBins int
@@ -18,7 +17,7 @@ func NewCollapsingHighestDenseStore(maxNumBins int) *CollapsingHighestDenseStore
 }
 
 func (s *CollapsingHighestDenseStore) Add(index int) {
-        s.addWithCount(index, float64(1))
+	s.addWithCount(index, float64(1))
 }
 
 func (s *CollapsingHighestDenseStore) AddBin(bin Bin) {
@@ -27,9 +26,8 @@ func (s *CollapsingHighestDenseStore) AddBin(bin Bin) {
 	if count == 0 {
 		return
 	}
-        s.addWithCount(index, count)
+	s.addWithCount(index, count)
 }
-
 
 func (s *CollapsingHighestDenseStore) addWithCount(index int, count float64) {
 	if s.count == 0 {

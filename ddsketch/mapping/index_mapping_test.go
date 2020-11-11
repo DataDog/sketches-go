@@ -14,7 +14,7 @@ import (
 
 const (
 	testMaxRelativeAccuracy      = 1 - 1e-3
-	testMinRelativeAccuracy      = 1e-6
+	testMinRelativeAccuracy      = 1e-7
 	floatingPointAcceptableError = 1e-12
 )
 
@@ -35,6 +35,9 @@ func EvaluateMappingAccuracy(t *testing.T, mapping IndexMapping, relativeAccurac
 		mappedValue := mapping.Value(mapping.Index(value))
 		EvaluateRelativeAccuracy(t, value, mappedValue, relativeAccuracy)
 	}
+	value := mapping.MaxIndexableValue()
+	mappedValue := mapping.Value(mapping.Index(value))
+	EvaluateRelativeAccuracy(t, value, mappedValue, relativeAccuracy)
 }
 
 func TestLogarithmicMappingAccuracy(t *testing.T) {

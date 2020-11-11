@@ -14,6 +14,8 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
+const expOverflow = 7.094361393031e+02 // The value at which math.Exp overflows
+
 type LogarithmicMapping struct {
 	relativeAccuracy float64
 	multiplier       float64
@@ -59,8 +61,8 @@ func (m *LogarithmicMapping) MinIndexableValue() float64 {
 
 func (m *LogarithmicMapping) MaxIndexableValue() float64 {
 	return math.Min(
-		math.Exp(math.MaxInt32/m.multiplier-1), // so that index <= MaxInt32
-		math.MaxFloat64/(1+m.relativeAccuracy),
+		math.Exp(math.MaxInt32/m.multiplier-1),       // so that index <= MaxInt32
+		math.Exp(expOverflow)/(1+m.relativeAccuracy), // so that math.Exp does not overflow
 	)
 }
 

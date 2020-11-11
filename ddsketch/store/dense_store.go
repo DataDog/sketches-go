@@ -104,18 +104,6 @@ func (s *DenseStore) KeyAtRank(rank float64) int {
 	return s.maxIndex
 }
 
-// Return the key for the value at rank from the highest bin
-func (s *DenseStore) KeyAtDescendingRank(rank float64) int {
-	var n float64
-	for i := len(s.bins) - 1; i >= 0; i-- {
-		n += s.bins[i]
-		if n > rank {
-			return i + s.minIndex
-		}
-	}
-	return s.minIndex
-}
-
 func (s *DenseStore) growLeft(index int) {
 	if s.minIndex < index {
 		return

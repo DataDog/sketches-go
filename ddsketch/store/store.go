@@ -18,7 +18,6 @@ type Store interface {
 	MinIndex() (int, error)
 	TotalCount() float64
 	KeyAtRank(rank float64) int
-	KeyAtDescendingRank(rank float64) int
 	MergeWith(store Store)
 	ToProto() *sketchpb.Store
 	FromProto(pb *sketchpb.Store)

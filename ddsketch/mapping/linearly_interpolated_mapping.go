@@ -72,15 +72,15 @@ func (m *LinearlyInterpolatedMapping) approximateInverseLog(x float64) float64 {
 
 func (m *LinearlyInterpolatedMapping) MinIndexableValue() float64 {
 	return math.Max(
-		m.approximateInverseLog((math.MinInt32+1)/m.multiplier), // so that index >= MinInt32
+		math.Exp2(math.MinInt32/m.multiplier-m.approximateLog(1)+1), // so that index >= MinInt32:w
 		minNormalFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
 	)
 }
 
 func (m *LinearlyInterpolatedMapping) MaxIndexableValue() float64 {
 	return math.Min(
-		math.Pow(2, math.MaxInt32/m.multiplier-m.approximateLog(float64(1))-1), // so that index <= MaxInt32
-		math.MaxFloat64/(1+m.relativeAccuracy),
+		math.Exp2(math.MaxInt32/m.multiplier-m.approximateLog(float64(1))-1), // so that index <= MaxInt32
+		math.Exp(expOverflow)/(1+m.relativeAccuracy),                         // so that math.Exp does not overflow
 	)
 }
 
@@ -108,5 +108,5 @@ func (m *LinearlyInterpolatedMapping) String() string {
 }
 
 func withinTolerance(x, y, tolerance float64) bool {
-	return math.Abs(x-y) <= tolerance
+	return math.Abs(x-y) <= tolerance*math.Max(math.Abs(x), math.Abs(y))
 }
