@@ -9,39 +9,45 @@ import (
 	"errors"
 	"math"
 
+	"github.com/DataDog/sketches-go/ddsketch/mapping"
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 	"github.com/DataDog/sketches-go/ddsketch/store"
 )
 
 type DDSketch struct {
-	IndexMapping
-	store     store.Store
-	zeroCount float64
+	mapping.IndexMapping
+	positiveValueStore store.Store
+	negativeValueStore store.Store
+	zeroCount          float64
 }
 
-func NewDDSketch(indexMapping IndexMapping, store store.Store) *DDSketch {
+func NewDDSketch(indexMapping mapping.IndexMapping, positiveValueStore store.Store, negativeValueStore store.Store) *DDSketch {
 	return &DDSketch{
-		IndexMapping: indexMapping,
-		store:        store,
+		IndexMapping:       indexMapping,
+		positiveValueStore: positiveValueStore,
+		negativeValueStore: negativeValueStore,
 	}
 }
 
 func MemoryOptimalCollapsingLowestSketch(relativeAccuracy float64, maxNumBins int) (*DDSketch, error) {
-	indexMapping, err := NewLogarithmicMapping(relativeAccuracy)
+	indexMapping, err := mapping.NewLogarithmicMapping(relativeAccuracy)
 	if err != nil {
 		return nil, err
 	}
-	return NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(maxNumBins)), nil
+	return NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(maxNumBins), store.NewCollapsingHighestDenseStore(maxNumBins)), nil
 }
 
 func (s *DDSketch) Accept(value float64) error {
-	if value < 0 || value > s.MaxIndexableValue() {
+	if value < -s.MaxIndexableValue() || value > s.MaxIndexableValue() {
 		return errors.New("The input value is outside the range that is tracked by the sketch.")
 	}
 
-	if value < s.MinIndexableValue() {
-		s.zeroCount++
+	if value > s.MinIndexableValue() {
+		s.positiveValueStore.Add(s.Index(value))
+	} else if value < -s.MinIndexableValue() {
+		s.negativeValueStore.Add(s.Index(-value))
 	} else {
-		s.store.Add(s.Index(value))
+		s.zeroCount++
 	}
 	return nil
 }
@@ -57,10 +63,14 @@ func (s *DDSketch) getValueAtQuantile(quantile float64) (float64, error) {
 	}
 
 	rank := quantile * (count - 1)
-	if rank < s.zeroCount {
+	negativeValueCount := s.negativeValueStore.TotalCount()
+	if rank < negativeValueCount {
+		return -s.Value(s.negativeValueStore.KeyAtRank(negativeValueCount - 1 - rank)), nil
+	} else if rank < s.zeroCount+negativeValueCount {
 		return 0, nil
+	} else {
+		return s.Value(s.positiveValueStore.KeyAtRank(rank - s.zeroCount - negativeValueCount)), nil
 	}
-	return s.Value(s.store.KeyAtRank(rank - s.zeroCount)), nil
 }
 
 func (s *DDSketch) getValuesAtQuantiles(quantiles []float64) ([]float64, error) {
@@ -76,30 +86,36 @@ func (s *DDSketch) getValuesAtQuantiles(quantiles []float64) ([]float64, error) 
 }
 
 func (s *DDSketch) getCount() float64 {
-	return s.zeroCount + s.store.TotalCount()
+	return s.zeroCount + s.positiveValueStore.TotalCount() + s.negativeValueStore.TotalCount()
 }
 
 func (s *DDSketch) IsEmpty() bool {
-	return s.getCount() == 0
+	return s.zeroCount == 0 && s.positiveValueStore.IsEmpty() && s.negativeValueStore.IsEmpty()
 }
 
 func (s *DDSketch) getMaxValue() (float64, error) {
-	if s.zeroCount > 0 && s.store.IsEmpty() {
+	if !s.positiveValueStore.IsEmpty() {
+		maxIndex, _ := s.positiveValueStore.MaxIndex()
+		return s.Value(maxIndex), nil
+	} else if s.zeroCount > 0 {
 		return 0, nil
 	} else {
-		maxIndex, err := s.store.MaxIndex()
+		minIndex, err := s.negativeValueStore.MinIndex()
 		if err != nil {
 			return math.NaN(), err
 		}
-		return s.Value(maxIndex), nil
+		return -s.Value(minIndex), nil
 	}
 }
 
 func (s *DDSketch) getMinValue() (float64, error) {
-	if s.zeroCount > 0 {
+	if !s.negativeValueStore.IsEmpty() {
+		maxIndex, _ := s.negativeValueStore.MaxIndex()
+		return -s.Value(maxIndex), nil
+	} else if s.zeroCount > 0 {
 		return 0, nil
 	} else {
-		minIndex, err := s.store.MinIndex()
+		minIndex, err := s.positiveValueStore.MinIndex()
 		if err != nil {
 			return math.NaN(), err
 		}
@@ -111,7 +127,24 @@ func (s *DDSketch) MergeWith(other *DDSketch) error {
 	if !s.IndexMapping.Equals(other.IndexMapping) {
 		return errors.New("Cannot merge sketches with different index mappings.")
 	}
-	s.store.MergeWith(other.store)
+	s.positiveValueStore.MergeWith(other.positiveValueStore)
+	s.negativeValueStore.MergeWith(other.negativeValueStore)
 	s.zeroCount += other.zeroCount
 	return nil
+}
+
+func (s *DDSketch) ToProto() *sketchpb.DDSketch {
+	return &sketchpb.DDSketch{
+		Mapping:        s.IndexMapping.ToProto(),
+		PositiveValues: s.positiveValueStore.ToProto(),
+		NegativeValues: s.negativeValueStore.ToProto(),
+		ZeroCount:      s.zeroCount,
+	}
+}
+
+func (s *DDSketch) FromProto(pb *sketchpb.DDSketch) {
+	s.IndexMapping.FromProto(pb.Mapping)
+	s.positiveValueStore.FromProto(pb.PositiveValues)
+	s.negativeValueStore.FromProto(pb.NegativeValues)
+	s.zeroCount = pb.ZeroCount
 }

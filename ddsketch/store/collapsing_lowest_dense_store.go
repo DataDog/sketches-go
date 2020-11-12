@@ -5,6 +5,10 @@
 
 package store
 
+import (
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
+)
+
 // CollapsingLowestDenseStore is a dynamically growing contiguous (non-sparse) store.
 // The lower bins get combined so that the total number of bins do not exceed maxNumBins.
 type CollapsingLowestDenseStore struct {
@@ -20,6 +24,19 @@ func NewCollapsingLowestDenseStore(maxNumBins int) *CollapsingLowestDenseStore {
 }
 
 func (s *CollapsingLowestDenseStore) Add(index int) {
+	s.addWithCount(index, float64(1))
+}
+
+func (s *CollapsingLowestDenseStore) AddBin(bin Bin) {
+	index := bin.Index()
+	count := bin.Count()
+	if count == 0 {
+		return
+	}
+	s.addWithCount(index, count)
+}
+
+func (s *CollapsingLowestDenseStore) addWithCount(index int, count float64) {
 	if s.count == 0 {
 		s.bins = make([]float64, min(growthBuffer, s.maxNumBins))
 		s.maxIndex = index
@@ -36,8 +53,8 @@ func (s *CollapsingLowestDenseStore) Add(index int) {
 	} else {
 		idx = index - s.minIndex
 	}
-	s.bins[idx]++
-	s.count++
+	s.bins[idx] += count
+	s.count += count
 }
 
 func (s *CollapsingLowestDenseStore) growLeft(index int) {
@@ -70,7 +87,7 @@ func (s *CollapsingLowestDenseStore) growRight(index int) {
 	} else if index >= s.minIndex+s.maxNumBins {
 		minIndex := index - s.maxNumBins + 1
 		var n float64
-		for i := s.minIndex; i < minIndex && i <= s.maxIndex; i++ {
+		for i := s.minIndex; i <= min(minIndex-1, s.maxIndex); i++ {
 			n += s.bins[i-s.minIndex]
 		}
 		if len(s.bins) < s.maxNumBins {
@@ -87,12 +104,10 @@ func (s *CollapsingLowestDenseStore) growRight(index int) {
 		s.minIndex = minIndex
 		s.bins[0] += n
 	} else {
-		// Expand bins by up to an extra growthBuffer bins than strictly required.
-		maxIndex := min(index+growthBuffer, s.minIndex+s.maxNumBins-1)
-		tmpBins := make([]float64, maxIndex-s.minIndex+1)
+		tmpBins := make([]float64, index-s.minIndex+1)
 		copy(tmpBins, s.bins)
 		s.bins = tmpBins
-		s.maxIndex = maxIndex
+		s.maxIndex = index
 	}
 }
 
@@ -124,22 +139,6 @@ func (s *CollapsingLowestDenseStore) MergeWith(other Store) {
 	s.count += o.count
 }
 
-func (s *CollapsingLowestDenseStore) AddBin(bin Bin) {
-	index := bin.Index()
-	count := bin.Count()
-	if count == 0 {
-		return
-	}
-	if index < s.minIndex {
-		s.growLeft(index)
-	} else if index > s.maxIndex {
-		s.growRight(index)
-	}
-	idx := max(0, index-s.minIndex)
-	s.bins[idx] += count
-	s.count += count
-}
-
 func (s *CollapsingLowestDenseStore) copy(o *CollapsingLowestDenseStore) {
 	s.bins = make([]float64, len(o.bins))
 	copy(s.bins, o.bins)
@@ -160,6 +159,20 @@ func (s *CollapsingLowestDenseStore) makeCopy() *CollapsingLowestDenseStore {
 			maxIndex: s.maxIndex,
 		},
 		maxNumBins: s.maxNumBins,
+	}
+}
+
+func (s *CollapsingLowestDenseStore) FromProto(pb *sketchpb.Store) {
+	// Reset the store.
+	s.count = 0
+	s.bins = nil
+	s.minIndex = 0
+	s.maxIndex = 0
+	for idx, count := range pb.BinCounts {
+		s.addWithCount(int(idx), count)
+	}
+	for idx, count := range pb.ContiguousBinCounts {
+		s.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
 }
 

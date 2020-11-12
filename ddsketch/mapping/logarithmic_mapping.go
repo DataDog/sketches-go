@@ -3,27 +3,18 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2020 Datadog, Inc.
 
-package ddsketch
+package mapping
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"math"
-	"math/bits"
+
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
-const (
-	maxInt = 1<<(bits.UintSize-1) - 1
-	minInt = -maxInt - 1
-)
-
-type IndexMapping interface {
-	Equals(other IndexMapping) bool
-	Index(value float64) int
-	Value(index int) float64
-	RelativeAccuracy() float64
-	MinIndexableValue() float64
-	MaxIndexableValue() float64
-}
+const expOverflow = 7.094361393031e+02 // The value at which math.Exp overflows
 
 type LogarithmicMapping struct {
 	relativeAccuracy float64
@@ -45,7 +36,7 @@ func (m *LogarithmicMapping) Equals(other IndexMapping) bool {
 	if !ok {
 		return false
 	}
-	return (m.relativeAccuracy == o.relativeAccuracy && m.multiplier == o.multiplier)
+	return (withinTolerance(m.relativeAccuracy, o.relativeAccuracy, 1e-12) && withinTolerance(m.multiplier, o.multiplier, 1e-12))
 }
 
 func (m *LogarithmicMapping) Index(value float64) int {
@@ -63,18 +54,37 @@ func (m *LogarithmicMapping) Value(index int) float64 {
 
 func (m *LogarithmicMapping) MinIndexableValue() float64 {
 	return math.Max(
-		math.Pow(math.E, minInt/m.multiplier+1), // so that index >= minInt
-		math.SmallestNonzeroFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
+		math.Exp(math.MinInt32/m.multiplier+1), // so that index >= MinInt32
+		minNormalFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
 	)
 }
 
 func (m *LogarithmicMapping) MaxIndexableValue() float64 {
 	return math.Min(
-		math.Pow(math.E, maxInt/m.multiplier-1), // so that index <= maxInt
-		math.MaxFloat64/(1+m.relativeAccuracy),
+		math.Exp(math.MaxInt32/m.multiplier-1),       // so that index <= MaxInt32
+		math.Exp(expOverflow)/(1+m.relativeAccuracy), // so that math.Exp does not overflow
 	)
 }
 
 func (m *LogarithmicMapping) RelativeAccuracy() float64 {
 	return m.relativeAccuracy
+}
+
+func (m *LogarithmicMapping) ToProto() *sketchpb.IndexMapping {
+	return &sketchpb.IndexMapping{
+		Gamma:         (1 + m.relativeAccuracy) / (1 - m.relativeAccuracy),
+		IndexOffset:   0,
+		Interpolation: sketchpb.IndexMapping_NONE,
+	}
+}
+
+func (m *LogarithmicMapping) FromProto(pb *sketchpb.IndexMapping) {
+	m.relativeAccuracy = 1 - 2/(1+pb.Gamma)
+	m.multiplier = 1 / math.Log((1+m.relativeAccuracy)/(1-m.relativeAccuracy))
+}
+
+func (m *LogarithmicMapping) String() string {
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v\n", m.relativeAccuracy, m.multiplier))
+	return buffer.String()
 }

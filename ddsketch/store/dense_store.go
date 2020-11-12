@@ -1,7 +1,7 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2018 Datadog, Inc.
+// Copyright 2020 Datadog, Inc.
 
 package store
 
@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
 const (
@@ -30,6 +32,19 @@ func NewDenseStore() *DenseStore {
 }
 
 func (s *DenseStore) Add(index int) {
+	s.addWithCount(index, float64(1))
+}
+
+func (s *DenseStore) AddBin(bin Bin) {
+	index := bin.Index()
+	count := bin.Count()
+	if count == 0 {
+		return
+	}
+	s.addWithCount(index, count)
+}
+
+func (s *DenseStore) addWithCount(index int, count float64) {
 	if s.count == 0 {
 		s.bins = make([]float64, growthBuffer)
 		s.maxIndex = index
@@ -41,8 +56,8 @@ func (s *DenseStore) Add(index int) {
 		s.growRight(index)
 	}
 	idx := index - s.minIndex
-	s.bins[idx]++
-	s.count++
+	s.bins[idx] += count
+	s.count += count
 }
 
 func (s *DenseStore) IsEmpty() bool {
@@ -144,22 +159,6 @@ func (s *DenseStore) MergeWith(other Store) {
 	s.count += o.count
 }
 
-func (s *DenseStore) AddBin(bin Bin) {
-	index := bin.Index()
-	count := bin.Count()
-	if count == 0 {
-		return
-	}
-	if index < s.minIndex {
-		s.growLeft(index)
-	} else if index > s.maxIndex {
-		s.growRight(index)
-	}
-	idx := max(0, index-s.minIndex)
-	s.bins[idx] += count
-	s.count += count
-}
-
 func (s *DenseStore) Bins() <-chan Bin {
 	ch := make(chan Bin)
 	go func() {
@@ -190,4 +189,27 @@ func (s *DenseStore) string() string {
 	}
 	buffer.WriteString(fmt.Sprintf("count: %v, minIndex: %d, maxIndex: %d}", s.count, s.minIndex, s.maxIndex))
 	return buffer.String()
+}
+
+func (s *DenseStore) ToProto() *sketchpb.Store {
+	bins := make([]float64, len(s.bins))
+	copy(bins, s.bins)
+	return &sketchpb.Store{
+		ContiguousBinCounts:      bins,
+		ContiguousBinIndexOffset: int32(s.minIndex),
+	}
+}
+
+func (s *DenseStore) FromProto(pb *sketchpb.Store) {
+	// Reset the store.
+	s.count = 0
+	s.bins = nil
+	s.minIndex = 0
+	s.maxIndex = 0
+	for idx, count := range pb.BinCounts {
+		s.addWithCount(int(idx), count)
+	}
+	for idx, count := range pb.ContiguousBinCounts {
+		s.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+	}
 }
