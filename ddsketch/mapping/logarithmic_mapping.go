@@ -14,11 +14,10 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
-const expOverflow = 7.094361393031e+02 // The value at which math.Exp overflows
-
 type LogarithmicMapping struct {
-	relativeAccuracy float64
-	multiplier       float64
+	relativeAccuracy      float64
+	multiplier            float64
+	normalizedIndexOffset float64
 }
 
 func NewLogarithmicMapping(relativeAccuracy float64) (*LogarithmicMapping, error) {
@@ -31,16 +30,28 @@ func NewLogarithmicMapping(relativeAccuracy float64) (*LogarithmicMapping, error
 	}, nil
 }
 
+func NewLogarithmicMappingWithGamma(gamma, indexOffset float64) (*LogarithmicMapping, error) {
+	if gamma <= 1 {
+		return nil, errors.New("Gamma must be greater than 1.")
+	}
+	return &LogarithmicMapping{
+		relativeAccuracy:      1 - 2/(1+gamma),
+		multiplier:            1 / math.Log(gamma),
+		normalizedIndexOffset: indexOffset,
+	}, nil
+}
+
 func (m *LogarithmicMapping) Equals(other IndexMapping) bool {
 	o, ok := other.(*LogarithmicMapping)
 	if !ok {
 		return false
 	}
-	return (withinTolerance(m.relativeAccuracy, o.relativeAccuracy, 1e-12) && withinTolerance(m.multiplier, o.multiplier, 1e-12))
+	tol := 1e-12
+	return (withinTolerance(m.multiplier, o.multiplier, tol) && withinTolerance(m.normalizedIndexOffset, o.normalizedIndexOffset, tol))
 }
 
 func (m *LogarithmicMapping) Index(value float64) int {
-	index := math.Log(value) * m.multiplier
+	index := math.Log(value)*m.multiplier + m.normalizedIndexOffset
 	if index >= 0 {
 		return int(index)
 	} else {
@@ -49,20 +60,20 @@ func (m *LogarithmicMapping) Index(value float64) int {
 }
 
 func (m *LogarithmicMapping) Value(index int) float64 {
-	return math.Exp((float64(index) / m.multiplier)) * (1 + m.relativeAccuracy)
+	return math.Exp(((float64(index) - m.normalizedIndexOffset) / m.multiplier)) * (1 + m.relativeAccuracy)
 }
 
 func (m *LogarithmicMapping) MinIndexableValue() float64 {
 	return math.Max(
-		math.Exp(math.MinInt32/m.multiplier+1), // so that index >= MinInt32
+		math.Exp((math.MinInt32-m.normalizedIndexOffset)/m.multiplier+1), // so that index >= MinInt32
 		minNormalFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
 	)
 }
 
 func (m *LogarithmicMapping) MaxIndexableValue() float64 {
 	return math.Min(
-		math.Exp(math.MaxInt32/m.multiplier-1),       // so that index <= MaxInt32
-		math.Exp(expOverflow)/(1+m.relativeAccuracy), // so that math.Exp does not overflow
+		math.Exp((math.MaxInt32-m.normalizedIndexOffset)/m.multiplier-1), // so that index <= MaxInt32
+		math.Exp(expOverflow)/(1+m.relativeAccuracy),                     // so that math.Exp does not overflow
 	)
 }
 
@@ -73,18 +84,21 @@ func (m *LogarithmicMapping) RelativeAccuracy() float64 {
 func (m *LogarithmicMapping) ToProto() *sketchpb.IndexMapping {
 	return &sketchpb.IndexMapping{
 		Gamma:         (1 + m.relativeAccuracy) / (1 - m.relativeAccuracy),
-		IndexOffset:   0,
+		IndexOffset:   m.normalizedIndexOffset,
 		Interpolation: sketchpb.IndexMapping_NONE,
 	}
 }
 
-func (m *LogarithmicMapping) FromProto(pb *sketchpb.IndexMapping) {
-	m.relativeAccuracy = 1 - 2/(1+pb.Gamma)
-	m.multiplier = 1 / math.Log((1+m.relativeAccuracy)/(1-m.relativeAccuracy))
+func (m *LogarithmicMapping) FromProto(pb *sketchpb.IndexMapping) IndexMapping {
+	mapping, err := NewLogarithmicMappingWithGamma(pb.Gamma, pb.IndexOffset)
+	if err != nil {
+		panic("Can't create LogarithmicMapping from sketchpb.IndexMapping.")
+	}
+	return mapping
 }
 
-func (m *LogarithmicMapping) String() string {
+func (m *LogarithmicMapping) string() string {
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v\n", m.relativeAccuracy, m.multiplier))
+	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v, normalizedIndexOffset: %v\n", m.relativeAccuracy, m.multiplier, m.normalizedIndexOffset))
 	return buffer.String()
 }

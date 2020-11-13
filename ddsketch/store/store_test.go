@@ -398,21 +398,33 @@ func TestSerialization(t *testing.T) {
 	// Store indices are limited to the int32 range
 	var values []int32
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+	TestMaxNumBins := testMaxNumBins[len(testMaxNumBins)-1]
 	for i := 0; i < nTests; i++ {
+		f.Fuzz(&values)
+		storeLow := NewCollapsingLowestDenseStore(TestMaxNumBins)
+		storeHigh := NewCollapsingHighestDenseStore(TestMaxNumBins)
+		for _, v := range values {
+			storeLow.Add(int(v))
+			storeHigh.Add(int(v))
+		}
 		for _, maxNumBins := range testMaxNumBins {
-			f.Fuzz(&values)
-			storeLow := NewCollapsingLowestDenseStore(maxNumBins)
-			storeHigh := NewCollapsingHighestDenseStore(maxNumBins)
-			for _, v := range values {
-				storeLow.Add(int(v))
-				storeHigh.Add(int(v))
+			deserializedStoreLow, _ := (NewCollapsingLowestDenseStore(maxNumBins).FromProto(storeLow.ToProto())).(*CollapsingLowestDenseStore)
+			EvaluateCollapsingLowestStore(t, deserializedStoreLow, values)
+			assert.Equal(t, deserializedStoreLow.maxNumBins, maxNumBins)
+			// Store does not change after serializing
+			assert.Equal(t, storeLow.maxNumBins, TestMaxNumBins)
+			// If maxNumBins are equal, the two stores are equal
+			if maxNumBins == TestMaxNumBins {
+				assert.Equal(t, storeLow, deserializedStoreLow)
 			}
-			deserializedStoreLow := NewCollapsingLowestDenseStore(maxNumBins)
-			deserializedStoreLow.FromProto(storeLow.ToProto())
-			assert.Equal(t, storeLow, deserializedStoreLow)
-			deserializedStoreHigh := NewCollapsingHighestDenseStore(maxNumBins)
-			deserializedStoreHigh.FromProto(storeHigh.ToProto())
-			assert.Equal(t, storeHigh, deserializedStoreHigh)
+			deserializedStoreHigh, _ := NewCollapsingHighestDenseStore(maxNumBins).FromProto(storeHigh.ToProto()).(*CollapsingHighestDenseStore)
+			EvaluateCollapsingHighestStore(t, deserializedStoreHigh, values)
+			// Store does not change after serializing
+			assert.Equal(t, storeHigh.maxNumBins, TestMaxNumBins)
+			// If maxNumBins are equal, the two stores are equal
+			if maxNumBins == TestMaxNumBins {
+				assert.Equal(t, storeHigh, deserializedStoreHigh)
+			}
 		}
 	}
 }
