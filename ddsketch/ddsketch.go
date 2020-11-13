@@ -142,9 +142,11 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 	}
 }
 
-func (s *DDSketch) FromProto(pb *sketchpb.DDSketch) {
-	s.IndexMapping.FromProto(pb.Mapping)
-	s.positiveValueStore.FromProto(pb.PositiveValues)
-	s.negativeValueStore.FromProto(pb.NegativeValues)
-	s.zeroCount = pb.ZeroCount
+func (s *DDSketch) FromProto(pb *sketchpb.DDSketch) *DDSketch {
+	return &DDSketch{
+		IndexMapping:       s.IndexMapping.FromProto(pb.Mapping),
+		positiveValueStore: s.positiveValueStore.FromProto(pb.PositiveValues),
+		negativeValueStore: s.negativeValueStore.FromProto(pb.NegativeValues),
+		zeroCount:          pb.ZeroCount,
+	}
 }

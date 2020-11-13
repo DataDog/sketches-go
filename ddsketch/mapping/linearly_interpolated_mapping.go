@@ -24,8 +24,9 @@ const (
 )
 
 type LinearlyInterpolatedMapping struct {
-	relativeAccuracy float64
-	multiplier       float64
+	relativeAccuracy      float64
+	multiplier            float64
+	normalizedIndexOffset float64
 }
 
 func NewLinearlyInterpolatedMapping(relativeAccuracy float64) (*LinearlyInterpolatedMapping, error) {
@@ -38,16 +39,29 @@ func NewLinearlyInterpolatedMapping(relativeAccuracy float64) (*LinearlyInterpol
 	}, nil
 }
 
+func NewLinearlyInterpolatedMappingWithGamma(gamma, indexOffset float64) (*LinearlyInterpolatedMapping, error) {
+	if gamma <= 1 {
+		return nil, errors.New("Gamma must be greater than 1.")
+	}
+	m := LinearlyInterpolatedMapping{
+		relativeAccuracy: 1 - 2/(1+math.Exp(math.Log2(gamma))),
+		multiplier:       1 / math.Log2(gamma),
+	}
+	m.normalizedIndexOffset = indexOffset - m.approximateLog(1)*m.multiplier
+	return &m, nil
+}
+
 func (m *LinearlyInterpolatedMapping) Equals(other IndexMapping) bool {
 	o, ok := other.(*LinearlyInterpolatedMapping)
 	if !ok {
 		return false
 	}
-	return (withinTolerance(m.relativeAccuracy, o.relativeAccuracy, 1e-12) && withinTolerance(m.multiplier, o.multiplier, 1e-12))
+	tol := 1e-12
+	return (withinTolerance(m.multiplier, o.multiplier, tol) && withinTolerance(m.normalizedIndexOffset, o.normalizedIndexOffset, tol))
 }
 
 func (m *LinearlyInterpolatedMapping) Index(value float64) int {
-	index := m.approximateLog(value) * m.multiplier
+	index := m.approximateLog(value)*m.multiplier + m.normalizedIndexOffset
 	if index >= 0 {
 		return int(index)
 	} else {
@@ -56,7 +70,7 @@ func (m *LinearlyInterpolatedMapping) Index(value float64) int {
 }
 
 func (m *LinearlyInterpolatedMapping) Value(index int) float64 {
-	return m.approximateInverseLog(float64(index)/m.multiplier) * (1 + m.relativeAccuracy)
+	return m.approximateInverseLog((float64(index)-m.normalizedIndexOffset)/m.multiplier) * (1 + m.relativeAccuracy)
 }
 
 func (m *LinearlyInterpolatedMapping) approximateLog(x float64) float64 {
@@ -72,15 +86,15 @@ func (m *LinearlyInterpolatedMapping) approximateInverseLog(x float64) float64 {
 
 func (m *LinearlyInterpolatedMapping) MinIndexableValue() float64 {
 	return math.Max(
-		math.Exp2(math.MinInt32/m.multiplier-m.approximateLog(1)+1), // so that index >= MinInt32:w
+		math.Exp2((math.MinInt32-m.normalizedIndexOffset)/m.multiplier-m.approximateLog(1)+1), // so that index >= MinInt32:w
 		minNormalFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
 	)
 }
 
 func (m *LinearlyInterpolatedMapping) MaxIndexableValue() float64 {
 	return math.Min(
-		math.Exp2(math.MaxInt32/m.multiplier-m.approximateLog(float64(1))-1), // so that index <= MaxInt32
-		math.Exp(expOverflow)/(1+m.relativeAccuracy),                         // so that math.Exp does not overflow
+		math.Exp2((math.MaxInt32-m.normalizedIndexOffset)/m.multiplier-m.approximateLog(float64(1))-1), // so that index <= MaxInt32
+		math.Exp(expOverflow)/(1+m.relativeAccuracy),                                                   // so that math.Exp does not overflow
 	)
 }
 
@@ -91,22 +105,29 @@ func (m *LinearlyInterpolatedMapping) RelativeAccuracy() float64 {
 func (m *LinearlyInterpolatedMapping) ToProto() *sketchpb.IndexMapping {
 	return &sketchpb.IndexMapping{
 		Gamma:         math.Pow(2, 1/m.multiplier),
-		IndexOffset:   0,
+		IndexOffset:   m.normalizedIndexOffset + m.approximateLog(1)*m.multiplier,
 		Interpolation: sketchpb.IndexMapping_LINEAR,
 	}
 }
 
-func (m *LinearlyInterpolatedMapping) FromProto(pb *sketchpb.IndexMapping) {
-	m.relativeAccuracy = 1 - 2/(1+math.Exp(math.Log(pb.Gamma)/math.Log(2)))
-	m.multiplier = math.Log(2) / math.Log(pb.Gamma)
+func (m *LinearlyInterpolatedMapping) FromProto(pb *sketchpb.IndexMapping) IndexMapping {
+	mapping, err := NewLinearlyInterpolatedMappingWithGamma(pb.Gamma, pb.IndexOffset)
+	if err != nil {
+		panic("Can't create LinearlyInterpolatedMapping from sketchpb.IndexMapping")
+	}
+	return mapping
 }
 
-func (m *LinearlyInterpolatedMapping) String() string {
+func (m *LinearlyInterpolatedMapping) string() string {
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v\n", m.relativeAccuracy, m.multiplier))
+	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v, normalizedIndexOffset: %v\n", m.relativeAccuracy, m.multiplier, m.normalizedIndexOffset))
 	return buffer.String()
 }
 
 func withinTolerance(x, y, tolerance float64) bool {
-	return math.Abs(x-y) <= tolerance*math.Max(math.Abs(x), math.Abs(y))
+	if x == 0 || y == 0 {
+		return math.Abs(x) <= tolerance && math.Abs(y) <= tolerance
+	} else {
+		return math.Abs(x-y) <= tolerance*math.Max(math.Abs(x), math.Abs(y))
+	}
 }

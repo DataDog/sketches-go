@@ -43,8 +43,7 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
 	// Serialize/deserialize the sketch
-	deserializedSketch, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
-	deserializedSketch.FromProto(sketch.ToProto())
+	deserializedSketch := sketch.FromProto(sketch.ToProto())
 	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }
 
@@ -257,8 +256,7 @@ func TestProto(t *testing.T) {
 		v := rand.NormFloat64()
 		sketch.Accept(v)
 	}
-	sketch2, _ := MemoryOptimalCollapsingLowestSketch(0.9, 20)
-	sketch2.FromProto(sketch.ToProto())
+	sketch2 := sketch.FromProto(sketch.ToProto())
 
 	qs := []float64{0.5, 0.75, 0.9, 1}
 	for _, q := range qs {

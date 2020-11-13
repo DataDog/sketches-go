@@ -200,16 +200,13 @@ func (s *DenseStore) ToProto() *sketchpb.Store {
 	}
 }
 
-func (s *DenseStore) FromProto(pb *sketchpb.Store) {
-	// Reset the store.
-	s.count = 0
-	s.bins = nil
-	s.minIndex = 0
-	s.maxIndex = 0
+func (s *DenseStore) FromProto(pb *sketchpb.Store) Store {
+	store := NewDenseStore()
 	for idx, count := range pb.BinCounts {
-		s.addWithCount(int(idx), count)
+		store.addWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
-		s.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+		store.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
+	return store
 }

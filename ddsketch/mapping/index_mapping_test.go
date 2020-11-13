@@ -20,6 +20,22 @@ const (
 
 var multiplier = 1 + math.Sqrt(2)*1e2
 
+func TestLogarithmicMappingEquivalence(t *testing.T) {
+	relativeAccuracy := 0.01
+	gamma := (1 + relativeAccuracy) / (1 - relativeAccuracy)
+	mapping1, _ := NewLogarithmicMapping(relativeAccuracy)
+	mapping2, _ := NewLogarithmicMappingWithGamma(gamma, 0)
+	assert.True(t, mapping1.Equals(mapping2))
+}
+
+func TestLinearlyInterpolatedMappingEquivalence(t *testing.T) {
+	gamma := 1.6
+	relativeAccuracy := 1 - 2/(1+math.Exp(math.Log2(gamma)))
+	mapping1, _ := NewLinearlyInterpolatedMapping(relativeAccuracy)
+	mapping2, _ := NewLinearlyInterpolatedMappingWithGamma(gamma, 1/math.Log2(gamma))
+	assert.True(t, mapping1.Equals(mapping2))
+}
+
 func EvaluateRelativeAccuracy(t *testing.T, expected, actual, relativeAccuracy float64) {
 	assert.True(t, expected >= 0)
 	assert.True(t, actual >= 0)
@@ -55,15 +71,19 @@ func TestLinearlyInterpolatedMappingAccuracy(t *testing.T) {
 }
 
 func TestLogarithmicMappingSerialization(t *testing.T) {
-	mapping, _ := NewLogarithmicMapping(1e-2)
-	deserializedMapping, _ := NewLogarithmicMapping(0.5)
-	deserializedMapping.FromProto(mapping.ToProto())
-	assert.True(t, mapping.Equals(deserializedMapping))
+	mapping1, _ := NewLogarithmicMapping(1e-2)
+	mapping2, _ := NewLogarithmicMapping(0.1)
+	deserializedMapping := mapping2.FromProto(mapping1.ToProto())
+	assert.True(t, mapping1.Equals(deserializedMapping))
+	// The calling mapping doesn't change
+	assert.Equal(t, mapping2.relativeAccuracy, 0.1)
 }
 
 func TestLinearlyInterpolatedMappingSerialization(t *testing.T) {
-	mapping, _ := NewLinearlyInterpolatedMapping(1e-2)
-	deserializedMapping, _ := NewLinearlyInterpolatedMapping(0.5)
-	deserializedMapping.FromProto(mapping.ToProto())
-	assert.True(t, mapping.Equals(deserializedMapping))
+	mapping1, _ := NewLinearlyInterpolatedMapping(1e-2)
+	mapping2, _ := NewLinearlyInterpolatedMapping(0.1)
+	deserializedMapping := mapping2.FromProto(mapping1.ToProto())
+	assert.True(t, mapping1.Equals(deserializedMapping))
+	// The calling mapping doesn't change
+	assert.Equal(t, mapping2.relativeAccuracy, 0.1)
 }
