@@ -20,5 +20,5 @@ type Store interface {
 	KeyAtRank(rank float64) int
 	MergeWith(store Store)
 	ToProto() *sketchpb.Store
-	FromProto(pb *sketchpb.Store) Store
+	FromProto(pb *sketchpb.Store) Store // Creates and returns a new Store rather than updating the caller
 }
