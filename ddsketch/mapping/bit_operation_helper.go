@@ -6,7 +6,6 @@
 package mapping
 
 import (
-	//"fmt"
 	"math"
 )
 

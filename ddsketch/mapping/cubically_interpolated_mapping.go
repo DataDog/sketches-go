@@ -35,7 +35,7 @@ func NewCubicallyInterpolatedMapping(relativeAccuracy float64) (*CubicallyInterp
 	}
 	return &CubicallyInterpolatedMapping{
 		relativeAccuracy: relativeAccuracy,
-		multiplier:       7.0 / (10 * math.Log((1+relativeAccuracy)/(1-relativeAccuracy))),
+		multiplier:       7.0 / (10 * math.Log1p(2*relativeAccuracy/(1-relativeAccuracy))),
 	}, nil
 }
 

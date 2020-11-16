@@ -26,7 +26,7 @@ func NewLinearlyInterpolatedMapping(relativeAccuracy float64) (*LinearlyInterpol
 	}
 	return &LinearlyInterpolatedMapping{
 		relativeAccuracy: relativeAccuracy,
-		multiplier:       1.0 / math.Log((1+relativeAccuracy)/(1-relativeAccuracy)),
+		multiplier:       1.0 / math.Log1p(2*relativeAccuracy/(1-relativeAccuracy)),
 	}, nil
 }
 

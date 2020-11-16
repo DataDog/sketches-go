@@ -26,7 +26,7 @@ func NewLogarithmicMapping(relativeAccuracy float64) (*LogarithmicMapping, error
 	}
 	return &LogarithmicMapping{
 		relativeAccuracy: relativeAccuracy,
-		multiplier:       1 / math.Log((1+relativeAccuracy)/(1-relativeAccuracy)),
+		multiplier:       1 / math.Log1p(2*relativeAccuracy/(1-relativeAccuracy)),
 	}, nil
 }
 
