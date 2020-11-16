@@ -36,6 +36,14 @@ func TestLinearlyInterpolatedMappingEquivalence(t *testing.T) {
 	assert.True(t, mapping1.Equals(mapping2))
 }
 
+func TestCubicallyInterpolatedMappingEquivalence(t *testing.T) {
+	gamma := 1.6
+	relativeAccuracy := 1 - 2/(1+math.Exp(7.0/10*math.Log2(gamma)))
+	mapping1, _ := NewCubicallyInterpolatedMapping(relativeAccuracy)
+	mapping2, _ := NewCubicallyInterpolatedMappingWithGamma(gamma, 0)
+	assert.True(t, mapping1.Equals(mapping2))
+}
+
 func EvaluateRelativeAccuracy(t *testing.T, expected, actual, relativeAccuracy float64) {
 	assert.True(t, expected >= 0)
 	assert.True(t, actual >= 0)
@@ -70,6 +78,13 @@ func TestLinearlyInterpolatedMappingAccuracy(t *testing.T) {
 	}
 }
 
+func TestCubicallyInterpolatedMappingAccuracy(t *testing.T) {
+	for relativeAccuracy := testMaxRelativeAccuracy; relativeAccuracy >= testMinRelativeAccuracy; relativeAccuracy *= (testMaxRelativeAccuracy * testMaxRelativeAccuracy) {
+		mapping, _ := NewCubicallyInterpolatedMapping(relativeAccuracy)
+		EvaluateMappingAccuracy(t, mapping, relativeAccuracy)
+	}
+}
+
 func TestLogarithmicMappingSerialization(t *testing.T) {
 	mapping1, _ := NewLogarithmicMapping(1e-2)
 	mapping2, _ := NewLogarithmicMapping(0.1)
@@ -82,6 +97,15 @@ func TestLogarithmicMappingSerialization(t *testing.T) {
 func TestLinearlyInterpolatedMappingSerialization(t *testing.T) {
 	mapping1, _ := NewLinearlyInterpolatedMapping(1e-2)
 	mapping2, _ := NewLinearlyInterpolatedMapping(0.1)
+	deserializedMapping := mapping2.FromProto(mapping1.ToProto())
+	assert.True(t, mapping1.Equals(deserializedMapping))
+	// The calling mapping doesn't change
+	assert.Equal(t, mapping2.relativeAccuracy, 0.1)
+}
+
+func TestCubicallyInterpolatedMappingSerialization(t *testing.T) {
+	mapping1, _ := NewCubicallyInterpolatedMapping(1e-2)
+	mapping2, _ := NewCubicallyInterpolatedMapping(0.1)
 	deserializedMapping := mapping2.FromProto(mapping1.ToProto())
 	assert.True(t, mapping1.Equals(deserializedMapping))
 	// The calling mapping doesn't change
