@@ -9,11 +9,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
 const (
+	arrayLengthOverhead        = 64
+	arrayLengthGrowthIncrement = 0.1
+
 	// Grow the bins with an extra growthBuffer bins to prevent growing too often
 	growthBuffer = 128
 )
@@ -23,16 +27,17 @@ const (
 type DenseStore struct {
 	bins     []float64
 	count    float64
+	offset   int
 	minIndex int
 	maxIndex int
 }
 
 func NewDenseStore() *DenseStore {
-	return &DenseStore{}
+	return &DenseStore{minIndex: math.MaxInt32, maxIndex: math.MinInt32}
 }
 
 func (s *DenseStore) Add(index int) {
-	s.addWithCount(index, float64(1))
+	s.AddWithCount(index, float64(1))
 }
 
 func (s *DenseStore) AddBin(bin Bin) {
@@ -41,23 +46,85 @@ func (s *DenseStore) AddBin(bin Bin) {
 	if count == 0 {
 		return
 	}
-	s.addWithCount(index, count)
+	s.AddWithCount(index, count)
 }
 
-func (s *DenseStore) addWithCount(index int, count float64) {
-	if s.count == 0 {
-		s.bins = make([]float64, growthBuffer)
-		s.maxIndex = index
-		s.minIndex = index - len(s.bins) + 1
+func (s *DenseStore) AddWithCount(index int, count float64) {
+	if count == 0 {
+		return
 	}
-	if index < s.minIndex {
-		s.growLeft(index)
-	} else if index > s.maxIndex {
-		s.growRight(index)
-	}
-	idx := index - s.minIndex
-	s.bins[idx] += count
+	arrayIndex := s.normalize(index)
+	s.bins[arrayIndex] += count
 	s.count += count
+}
+
+func (s *DenseStore) normalize(index int) int {
+	if index < s.minIndex || index > s.maxIndex {
+		s.extendRange(index, index)
+	}
+	return index - s.offset
+}
+
+func (s *DenseStore) getNewLength(newMinIndex, newMaxIndex int) int {
+	desiredLength := newMaxIndex - newMinIndex + 1
+	return int((float64(desiredLength+arrayLengthOverhead-1)/arrayLengthGrowthIncrement + 1) * arrayLengthGrowthIncrement)
+}
+
+func (s *DenseStore) extendRange(newMinIndex, newMaxIndex int) {
+
+	newMinIndex = min(newMinIndex, s.minIndex)
+	newMaxIndex = max(newMaxIndex, s.maxIndex)
+
+	if s.IsEmpty() {
+		initialLength := s.getNewLength(newMinIndex, newMaxIndex)
+		s.bins = make([]float64, initialLength)
+		s.offset = newMinIndex
+		s.minIndex = newMinIndex
+		s.maxIndex = newMaxIndex
+		s.adjust(newMinIndex, newMaxIndex)
+	} else if newMinIndex >= s.offset && newMaxIndex < s.offset+len(s.bins) {
+		s.minIndex = newMinIndex
+		s.maxIndex = newMaxIndex
+	} else {
+		// To avoid shifting too often when nearing the capacity of the array,
+		// we may grow it before we actually reach the capacity.
+		newLength := s.getNewLength(newMinIndex, newMaxIndex)
+		if newLength > len(s.bins) {
+			tmpBins := make([]float64, newLength)
+			copy(tmpBins, s.bins)
+			s.bins = tmpBins
+		}
+		s.adjust(newMinIndex, newMaxIndex)
+	}
+}
+
+func (s *DenseStore) adjust(newMinIndex, newMaxIndex int) {
+	s.centerCounts(newMinIndex, newMaxIndex)
+}
+
+func (s *DenseStore) centerCounts(newMinIndex, newMaxIndex int) {
+	midIndex := newMinIndex + (newMaxIndex-newMinIndex+1)/2
+	s.shiftCounts(s.offset + len(s.bins)/2 - midIndex)
+	s.minIndex = newMinIndex
+	s.maxIndex = newMaxIndex
+}
+
+func (s *DenseStore) shiftCounts(shift int) {
+	minArrIndex := s.minIndex - s.offset
+	maxArrIndex := s.maxIndex - s.offset
+	copy(s.bins[minArrIndex+shift:], s.bins[minArrIndex:maxArrIndex+1])
+	if shift > 0 {
+		s.resetBins(s.minIndex, s.minIndex+shift-1)
+	} else {
+		s.resetBins(s.maxIndex+shift+1, s.maxIndex)
+	}
+	s.offset -= shift
+}
+
+func (s *DenseStore) resetBins(fromIndex, toIndex int) {
+	for i := fromIndex - s.offset; i <= toIndex-s.offset; i++ {
+		s.bins[i] = 0
+	}
 }
 
 func (s *DenseStore) IsEmpty() bool {
@@ -69,27 +136,17 @@ func (s *DenseStore) TotalCount() float64 {
 }
 
 func (s *DenseStore) MinIndex() (int, error) {
-	if s.count == 0 {
+	if s.IsEmpty() {
 		return 0, errors.New("MinIndex of empty store is undefined.")
 	}
-	for i, b := range s.bins {
-		if b > 0 {
-			return i + s.minIndex, nil
-		}
-	}
-	return s.maxIndex, nil
+	return s.minIndex, nil
 }
 
 func (s *DenseStore) MaxIndex() (int, error) {
-	if s.count == 0 {
+	if s.IsEmpty() {
 		return 0, errors.New("MaxIndex of empty store is undefined.")
 	}
-	for i := s.maxIndex; i >= s.minIndex; i-- {
-		if s.bins[i-s.minIndex] > 0 {
-			return i, nil
-		}
-	}
-	return s.minIndex, nil
+	return s.maxIndex, nil
 }
 
 // Return the key for the value at rank
@@ -98,42 +155,14 @@ func (s *DenseStore) KeyAtRank(rank float64) int {
 	for i, b := range s.bins {
 		n += b
 		if n > rank {
-			return i + s.minIndex
+			return i + s.offset
 		}
 	}
 	return s.maxIndex
 }
 
-func (s *DenseStore) growLeft(index int) {
-	if s.minIndex < index {
-		return
-	}
-	// Expand bins by an extra growthBuffer bins than strictly required.
-	minIndex := index - growthBuffer
-	// Note that there's no protection against integer overflow of s.maxIndex-minIndex+1,
-	// or whether allocating a slice of this size is possible.
-	tmpBins := make([]float64, s.maxIndex-minIndex+1)
-	copy(tmpBins[s.minIndex-minIndex:], s.bins)
-	s.bins = tmpBins
-	s.minIndex = minIndex
-}
-
-func (s *DenseStore) growRight(index int) {
-	if s.maxIndex > index {
-		return
-	}
-	// Expand bins by an extra growthBuffer bins than strictly required.
-	maxIndex := index + growthBuffer
-	// Note that there's no protection against integer overflow of maxIndex-s.minIndex+1,
-	// or whether allocating a slice of this size is possible.
-	tmpBins := make([]float64, maxIndex-s.minIndex+1)
-	copy(tmpBins, s.bins)
-	s.bins = tmpBins
-	s.maxIndex = maxIndex
-}
-
 func (s *DenseStore) MergeWith(other Store) {
-	if other.TotalCount() == 0 {
+	if other.IsEmpty() {
 		return
 	}
 	o, ok := other.(*DenseStore)
@@ -143,18 +172,11 @@ func (s *DenseStore) MergeWith(other Store) {
 		}
 		return
 	}
-	if s.count == 0 {
-		s.copy(o)
-		return
-	}
-	if s.minIndex > o.minIndex {
-		s.growLeft(o.minIndex)
-	}
-	if s.maxIndex < o.maxIndex {
-		s.growRight(o.maxIndex)
+	if o.minIndex < s.minIndex || o.maxIndex > s.maxIndex {
+		s.extendRange(o.minIndex, o.maxIndex)
 	}
 	for idx := o.minIndex; idx <= o.maxIndex; idx++ {
-		s.bins[idx-s.minIndex] += o.bins[idx-o.minIndex]
+		s.bins[idx-s.offset] += o.bins[idx-o.offset]
 	}
 	s.count += o.count
 }
@@ -164,36 +186,43 @@ func (s *DenseStore) Bins() <-chan Bin {
 	go func() {
 		defer close(ch)
 		for idx := s.minIndex; idx <= s.maxIndex; idx++ {
-			if s.bins[idx-s.minIndex] > 0 {
-				ch <- Bin{index: idx, count: s.bins[idx-s.minIndex]}
+			if s.bins[idx-s.offset] > 0 {
+				ch <- Bin{index: idx, count: s.bins[idx-s.offset]}
 			}
 		}
 	}()
 	return ch
 }
 
-func (s *DenseStore) copy(o *DenseStore) {
-	s.bins = make([]float64, len(o.bins))
-	copy(s.bins, o.bins)
-	s.minIndex = o.minIndex
-	s.maxIndex = o.maxIndex
-	s.count = o.count
+func (s *DenseStore) Copy() Store {
+	bins := make([]float64, len(s.bins))
+	copy(bins, s.bins)
+	return &DenseStore{
+		bins:     bins,
+		count:    s.count,
+		offset:   s.offset,
+		minIndex: s.minIndex,
+		maxIndex: s.maxIndex,
+	}
 }
 
 func (s *DenseStore) string() string {
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for i := 0; i < len(s.bins); i++ {
-		index := i + s.minIndex
+		index := i + s.offset
 		buffer.WriteString(fmt.Sprintf("%d: %f, ", index, s.bins[i]))
 	}
-	buffer.WriteString(fmt.Sprintf("count: %v, minIndex: %d, maxIndex: %d}", s.count, s.minIndex, s.maxIndex))
+	buffer.WriteString(fmt.Sprintf("count: %v, offset: %d, minIndex: %d, maxIndex: %d}", s.count, s.offset, s.minIndex, s.maxIndex))
 	return buffer.String()
 }
 
 func (s *DenseStore) ToProto() *sketchpb.Store {
-	bins := make([]float64, len(s.bins))
-	copy(bins, s.bins)
+	if s.IsEmpty() {
+		return &sketchpb.Store{ContiguousBinCounts: nil}
+	}
+	bins := make([]float64, s.maxIndex-s.minIndex+1)
+	copy(bins, s.bins[s.minIndex-s.offset:s.maxIndex-s.offset+1])
 	return &sketchpb.Store{
 		ContiguousBinCounts:      bins,
 		ContiguousBinIndexOffset: int32(s.minIndex),
@@ -203,10 +232,10 @@ func (s *DenseStore) ToProto() *sketchpb.Store {
 func (s *DenseStore) FromProto(pb *sketchpb.Store) Store {
 	store := NewDenseStore()
 	for idx, count := range pb.BinCounts {
-		store.addWithCount(int(idx), count)
+		store.AddWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
-		store.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
 	return store
 }

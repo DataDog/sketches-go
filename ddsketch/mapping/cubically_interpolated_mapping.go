@@ -51,6 +51,14 @@ func NewCubicallyInterpolatedMappingWithGamma(gamma, indexOffset float64) (*Cubi
 	return &m, nil
 }
 
+func (m *CubicallyInterpolatedMapping) Copy() IndexMapping {
+	return &CubicallyInterpolatedMapping{
+		relativeAccuracy:      m.relativeAccuracy,
+		multiplier:            m.multiplier,
+		normalizedIndexOffset: m.normalizedIndexOffset,
+	}
+}
+
 func (m *CubicallyInterpolatedMapping) Equals(other IndexMapping) bool {
 	o, ok := other.(*CubicallyInterpolatedMapping)
 	if !ok {

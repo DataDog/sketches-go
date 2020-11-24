@@ -12,7 +12,9 @@ import (
 type Store interface {
 	Add(index int)
 	AddBin(bin Bin)
+	AddWithCount(index int, count float64)
 	Bins() <-chan Bin
+	Copy() Store
 	IsEmpty() bool
 	MaxIndex() (int, error)
 	MinIndex() (int, error)
