@@ -41,14 +41,6 @@ func NewLogarithmicMappingWithGamma(gamma, indexOffset float64) (*LogarithmicMap
 	}, nil
 }
 
-func (m *LogarithmicMapping) Copy() IndexMapping {
-	return &LogarithmicMapping{
-		relativeAccuracy:      m.relativeAccuracy,
-		multiplier:            m.multiplier,
-		normalizedIndexOffset: m.normalizedIndexOffset,
-	}
-}
-
 func (m *LogarithmicMapping) Equals(other IndexMapping) bool {
 	o, ok := other.(*LogarithmicMapping)
 	if !ok {

@@ -42,14 +42,6 @@ func NewLinearlyInterpolatedMappingWithGamma(gamma, indexOffset float64) (*Linea
 	return &m, nil
 }
 
-func (m *LinearlyInterpolatedMapping) Copy() IndexMapping {
-	return &LinearlyInterpolatedMapping{
-		relativeAccuracy:      m.relativeAccuracy,
-		multiplier:            m.multiplier,
-		normalizedIndexOffset: m.normalizedIndexOffset,
-	}
-}
-
 func (m *LinearlyInterpolatedMapping) Equals(other IndexMapping) bool {
 	o, ok := other.(*LinearlyInterpolatedMapping)
 	if !ok {

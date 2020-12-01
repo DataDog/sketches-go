@@ -16,7 +16,6 @@ const (
 
 type IndexMapping interface {
 	Equals(other IndexMapping) bool
-	Copy() IndexMapping
 	Index(value float64) int
 	Value(index int) float64
 	RelativeAccuracy() float64

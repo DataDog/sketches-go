@@ -61,7 +61,7 @@ func (s *DDSketch) AddWithCount(value, count float64) error {
 
 func (s *DDSketch) Copy() *DDSketch {
 	return &DDSketch{
-		IndexMapping:       s.IndexMapping.Copy(),
+		IndexMapping:       s.IndexMapping,
 		positiveValueStore: s.positiveValueStore.Copy(),
 		negativeValueStore: s.negativeValueStore.Copy(),
 	}
