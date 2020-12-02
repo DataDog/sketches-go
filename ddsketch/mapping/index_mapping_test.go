@@ -111,3 +111,10 @@ func TestCubicallyInterpolatedMappingSerialization(t *testing.T) {
 	// The calling mapping doesn't change
 	assert.Equal(t, mapping2.relativeAccuracy, 0.1)
 }
+
+func TestSerialization(t *testing.T) {
+	m, _ := NewCubicallyInterpolatedMapping(1e-2)
+	deserializedMapping, err := FromProto(m.ToProto())
+	assert.Nil(t, err)
+	assert.True(t, m.Equals(deserializedMapping))
+}

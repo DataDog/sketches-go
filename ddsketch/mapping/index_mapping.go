@@ -6,6 +6,7 @@
 package mapping
 
 import (
+	"fmt"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -23,4 +24,18 @@ type IndexMapping interface {
 	MaxIndexableValue() float64
 	ToProto() *sketchpb.IndexMapping
 	FromProto(pb *sketchpb.IndexMapping) IndexMapping // Creates and returns a new IndexMapping rather than updating the caller
+}
+
+// FromProto returns an Index mapping from the protobuf definition of it
+func FromProto(m *sketchpb.IndexMapping) (IndexMapping, error) {
+	switch m.Interpolation {
+	case sketchpb.IndexMapping_NONE:
+		return NewLogarithmicMappingWithGamma(m.Gamma, m.IndexOffset)
+	case sketchpb.IndexMapping_LINEAR:
+		return NewLinearlyInterpolatedMappingWithGamma(m.Gamma, m.IndexOffset)
+	case sketchpb.IndexMapping_CUBIC:
+		return NewCubicallyInterpolatedMappingWithGamma(m.Gamma, m.IndexOffset)
+	default:
+		return nil, fmt.Errorf("interpolation not supported: %d", m.Interpolation)
+	}
 }
