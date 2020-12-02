@@ -58,6 +58,7 @@ func (s *DenseStore) AddWithCount(index int, count float64) {
 	s.count += count
 }
 
+// Normalize the store, if necessary, so that the counter of the specified index can be updated.
 func (s *DenseStore) normalize(index int) int {
 	if index < s.minIndex || index > s.maxIndex {
 		s.extendRange(index, index)
@@ -98,6 +99,8 @@ func (s *DenseStore) extendRange(newMinIndex, newMaxIndex int) {
 	}
 }
 
+// Adjust bins, offset, minIndex and maxIndex, without resizing the bins slice in order to make it fit the
+// specified range.
 func (s *DenseStore) adjust(newMinIndex, newMaxIndex int) {
 	s.centerCounts(newMinIndex, newMaxIndex)
 }

@@ -47,6 +47,7 @@ func (s *CollapsingHighestDenseStore) AddWithCount(index int, count float64) {
 	s.count += count
 }
 
+// Normalize the store, if necessary, so that the counter of the specified index can be updated.
 func (s *CollapsingHighestDenseStore) normalize(index int) int {
 	if index > s.maxIndex {
 		if s.isCollapsed {
@@ -93,6 +94,8 @@ func (s *CollapsingHighestDenseStore) extendRange(newMinIndex, newMaxIndex int) 
 	}
 }
 
+// Adjust bins, offset, minIndex and maxIndex, without resizing the bins slice in order to make it fit the
+// specified range.
 func (s *CollapsingHighestDenseStore) adjust(newMinIndex, newMaxIndex int) {
 	if newMaxIndex-newMinIndex+1 > len(s.bins) {
 		// The range of indices is too wide, buckets of lowest indices need to be collapsed.

@@ -14,6 +14,9 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
+// A fast IndexMapping that approximates the memory-optimal LogarithmicMapping by extracting the floor value
+// of the logarithm to the base 2 from the binary representations of floating-point values and linearly
+// interpolating the logarithm in-between.
 type LinearlyInterpolatedMapping struct {
 	relativeAccuracy      float64
 	multiplier            float64
@@ -64,11 +67,13 @@ func (m *LinearlyInterpolatedMapping) Value(index int) float64 {
 	return m.approximateInverseLog((float64(index)-m.normalizedIndexOffset)/m.multiplier) * (1 + m.relativeAccuracy)
 }
 
+// Return an approximation of log(1) + Math.log(x) / Math.log(2)}
 func (m *LinearlyInterpolatedMapping) approximateLog(x float64) float64 {
 	bits := math.Float64bits(x)
 	return getExponent(bits) + getSignificandPlusOne(bits)
 }
 
+// The exact inverse of approximateLog.
 func (m *LinearlyInterpolatedMapping) approximateInverseLog(x float64) float64 {
 	exponent := math.Floor(x - 1)
 	significandPlusOne := x - exponent
@@ -77,7 +82,7 @@ func (m *LinearlyInterpolatedMapping) approximateInverseLog(x float64) float64 {
 
 func (m *LinearlyInterpolatedMapping) MinIndexableValue() float64 {
 	return math.Max(
-		math.Exp2((math.MinInt32-m.normalizedIndexOffset)/m.multiplier-m.approximateLog(1)+1), // so that index >= MinInt32:w
+		math.Exp2((math.MinInt32-m.normalizedIndexOffset)/m.multiplier-m.approximateLog(1)+1), // so that index >= MinInt32
 		minNormalFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
 	)
 }
@@ -93,6 +98,7 @@ func (m *LinearlyInterpolatedMapping) RelativeAccuracy() float64 {
 	return m.relativeAccuracy
 }
 
+// Generates a protobuf representation of this LinearlyInterpolatedMapping.
 func (m *LinearlyInterpolatedMapping) ToProto() *sketchpb.IndexMapping {
 	return &sketchpb.IndexMapping{
 		Gamma:         math.Exp2(1 / m.multiplier),
@@ -101,6 +107,7 @@ func (m *LinearlyInterpolatedMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
+// Returns an instance of LinearlyInterpolatedMapping that matches the provided protobuf representation.
 func (m *LinearlyInterpolatedMapping) FromProto(pb *sketchpb.IndexMapping) IndexMapping {
 	mapping, err := NewLinearlyInterpolatedMappingWithGamma(pb.Gamma, pb.IndexOffset)
 	if err != nil {
