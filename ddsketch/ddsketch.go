@@ -37,19 +37,34 @@ func MemoryOptimalCollapsingLowestSketch(relativeAccuracy float64, maxNumBins in
 	return NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(maxNumBins), store.NewCollapsingHighestDenseStore(maxNumBins)), nil
 }
 
-func (s *DDSketch) Accept(value float64) error {
+func (s *DDSketch) Add(value float64) error {
+	return s.AddWithCount(value, float64(1))
+}
+
+func (s *DDSketch) AddWithCount(value, count float64) error {
 	if value < -s.MaxIndexableValue() || value > s.MaxIndexableValue() {
 		return errors.New("The input value is outside the range that is tracked by the sketch.")
 	}
+	if count < 0 {
+		return errors.New("The count cannot be negative.")
+	}
 
 	if value > s.MinIndexableValue() {
-		s.positiveValueStore.Add(s.Index(value))
+		s.positiveValueStore.AddWithCount(s.Index(value), count)
 	} else if value < -s.MinIndexableValue() {
-		s.negativeValueStore.Add(s.Index(-value))
+		s.negativeValueStore.AddWithCount(s.Index(-value), count)
 	} else {
-		s.zeroCount++
+		s.zeroCount += count
 	}
 	return nil
+}
+
+func (s *DDSketch) Copy() *DDSketch {
+	return &DDSketch{
+		IndexMapping:       s.IndexMapping,
+		positiveValueStore: s.positiveValueStore.Copy(),
+		negativeValueStore: s.negativeValueStore.Copy(),
+	}
 }
 
 func (s *DDSketch) getValueAtQuantile(quantile float64) (float64, error) {

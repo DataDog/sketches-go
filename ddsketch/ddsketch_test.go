@@ -31,14 +31,14 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	data := dataset.NewDataset()
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
-		sketch.Accept(value)
+		sketch.Add(value)
 		data.Add(value)
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
 	// Add negative numbers
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
-		sketch.Accept(-value)
+		sketch.Add(-value)
 		data.Add(-value)
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
@@ -118,14 +118,14 @@ func TestMergeNormal(t *testing.T) {
 			generator1 := dataset.NewNormal(35, 1)
 			for i := 0; i < n; i += 3 {
 				value := generator1.Generate()
-				sketch1.Accept(value)
+				sketch1.Add(value)
 				data.Add(value)
 			}
 			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
 			generator2 := dataset.NewNormal(-10, 2)
 			for i := 1; i < n; i += 3 {
 				value := generator2.Generate()
-				sketch2.Accept(value)
+				sketch2.Add(value)
 				data.Add(value)
 			}
 			sketch1.MergeWith(sketch2)
@@ -134,7 +134,7 @@ func TestMergeNormal(t *testing.T) {
 			generator3 := dataset.NewNormal(40, 0.5)
 			for i := 2; i < n; i += 3 {
 				value := generator3.Generate()
-				sketch3.Accept(value)
+				sketch3.Add(value)
 				data.Add(value)
 			}
 			sketch1.MergeWith(sketch3)
@@ -153,7 +153,7 @@ func TestMergeEmpty(t *testing.T) {
 			generator := dataset.NewExponential(5)
 			for i := 0; i < n; i++ {
 				value := generator.Generate()
-				sketch2.Accept(value)
+				sketch2.Add(value)
 				data.Add(value)
 			}
 			sketch1.MergeWith(sketch2)
@@ -177,14 +177,14 @@ func TestMergeMixed(t *testing.T) {
 			generator1 := dataset.NewNormal(100, 1)
 			for i := 0; i < n; i += 3 {
 				value := generator1.Generate()
-				sketch1.Accept(value)
+				sketch1.Add(value)
 				data.Add(value)
 			}
 			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
 			generator2 := dataset.NewExponential(5)
 			for i := 1; i < n; i += 3 {
 				value := generator2.Generate()
-				sketch2.Accept(value)
+				sketch2.Add(value)
 				data.Add(value)
 			}
 			sketch1.MergeWith(sketch2)
@@ -193,7 +193,7 @@ func TestMergeMixed(t *testing.T) {
 			generator3 := dataset.NewExponential(0.1)
 			for i := 2; i < n; i += 3 {
 				value := generator3.Generate()
-				sketch3.Accept(value)
+				sketch3.Add(value)
 				data.Add(value)
 			}
 			sketch1.MergeWith(sketch3)
@@ -216,7 +216,7 @@ func TestConsistentQuantile(t *testing.T) {
 		vfuzzer.Fuzz(&vals)
 		fuzzer.Fuzz(&q)
 		for _, v := range vals {
-			sketch.Accept(v)
+			sketch.Add(v)
 		}
 		q1, _ := sketch.getValueAtQuantile(q)
 		q2, _ := sketch.getValueAtQuantile(q)
@@ -234,35 +234,17 @@ func TestConsistentMerge(t *testing.T) {
 	sketch1, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
 	generator := dataset.NewNormal(50, 1)
 	for i := 0; i < testSize; i++ {
-		sketch1.Accept(generator.Generate())
+		sketch1.Add(generator.Generate())
 	}
 	for i := 0; i < nTests; i++ {
 		sketch2, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
 		fuzzer.Fuzz(&vals)
 		for _, v := range vals {
-			sketch2.Accept(v)
+			sketch2.Add(v)
 		}
 		quantilesBeforeMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
 		sketch1.MergeWith(sketch2)
 		quantilesAfterMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
 		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
 	}
-}
-
-func TestProto(t *testing.T) {
-	sketch, _ := MemoryOptimalCollapsingLowestSketch(0.9, 20)
-
-	for i := 0; i < 500; i++ {
-		v := rand.NormFloat64()
-		sketch.Accept(v)
-	}
-	sketch2 := sketch.FromProto(sketch.ToProto())
-
-	qs := []float64{0.5, 0.75, 0.9, 1}
-	for _, q := range qs {
-		q1, _ := sketch.getValueAtQuantile(q)
-		q2, _ := sketch2.getValueAtQuantile(q)
-		assert.Equal(t, q1, q2)
-	}
-	assert.Equal(t, sketch, sketch2)
 }

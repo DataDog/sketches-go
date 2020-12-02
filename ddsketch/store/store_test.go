@@ -323,9 +323,9 @@ func TestMixedMerge1(t *testing.T) {
 	var store2 *DenseStore
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)
 	for i := 0; i < nTests; i++ {
-		for _, maxNumBins1 := range testMaxNumBins {
+		for _, maxNumBins := range testMaxNumBins {
 			f.Fuzz(&values1)
-			store1 = NewCollapsingLowestDenseStore(maxNumBins1)
+			store1 = NewCollapsingLowestDenseStore(maxNumBins)
 			var valuesInt []int
 			for _, v := range values1 {
 				store1.Add(int(v))
@@ -337,7 +337,7 @@ func TestMixedMerge1(t *testing.T) {
 				store2.Add(int(v))
 				valuesInt = append(valuesInt, int(v))
 			}
-			if nTests/2 == 0 {
+			if i/2 == 0 {
 				// Merge DenseStore to CollapsingLowestDenseStore
 				store1.MergeWith(store2)
 				var valuesInt32 []int32
@@ -376,7 +376,7 @@ func TestMixedMerge2(t *testing.T) {
 				store2.Add(int(v))
 				valuesInt = append(valuesInt, int(v))
 			}
-			if nTests/2 == 0 {
+			if i/2 == 0 {
 				// Merge DenseStore to CollapsingHighestDenseStore
 				store1.MergeWith(store2)
 				var valuesInt32 []int32
@@ -391,6 +391,17 @@ func TestMixedMerge2(t *testing.T) {
 			}
 		}
 	}
+}
+
+func AssertDenseStoresEqual(t *testing.T, store DenseStore, other DenseStore) {
+	assert.Equal(t, store.count, other.count)
+	assert.Equal(t, store.minIndex, other.minIndex)
+	assert.Equal(t, store.maxIndex, other.maxIndex)
+	assert.Equal(
+		t,
+		store.bins[store.minIndex-store.offset:store.maxIndex+1-store.offset],
+		other.bins[other.minIndex-store.offset:other.maxIndex+1-store.offset],
+	)
 }
 
 func TestSerialization(t *testing.T) {
@@ -413,17 +424,17 @@ func TestSerialization(t *testing.T) {
 			assert.Equal(t, deserializedStoreLow.maxNumBins, maxNumBins)
 			// Store does not change after serializing
 			assert.Equal(t, storeLow.maxNumBins, TestMaxNumBins)
-			// If maxNumBins are equal, the two stores are equal
+			// If maxNumBins are equal, the two stores' bins are equal
 			if maxNumBins == TestMaxNumBins {
-				assert.Equal(t, storeLow, deserializedStoreLow)
+				AssertDenseStoresEqual(t, storeLow.DenseStore, deserializedStoreLow.DenseStore)
 			}
 			deserializedStoreHigh, _ := NewCollapsingHighestDenseStore(maxNumBins).FromProto(storeHigh.ToProto()).(*CollapsingHighestDenseStore)
 			EvaluateCollapsingHighestStore(t, deserializedStoreHigh, values)
 			// Store does not change after serializing
 			assert.Equal(t, storeHigh.maxNumBins, TestMaxNumBins)
-			// If maxNumBins are equal, the two stores are equal
+			// If maxNumBins are equal, the two stores' bins are equal
 			if maxNumBins == TestMaxNumBins {
-				assert.Equal(t, storeHigh, deserializedStoreHigh)
+				AssertDenseStoresEqual(t, storeHigh.DenseStore, deserializedStoreHigh.DenseStore)
 			}
 		}
 	}

@@ -5,19 +5,28 @@
 
 package store
 
-import "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
+import (
+	"math"
+
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
+)
 
 type CollapsingHighestDenseStore struct {
 	DenseStore
-	maxNumBins int
+	maxNumBins  int
+	isCollapsed bool
 }
 
 func NewCollapsingHighestDenseStore(maxNumBins int) *CollapsingHighestDenseStore {
-	return &CollapsingHighestDenseStore{maxNumBins: maxNumBins}
+	return &CollapsingHighestDenseStore{
+		DenseStore:  DenseStore{minIndex: math.MaxInt32, maxIndex: math.MinInt32},
+		maxNumBins:  maxNumBins,
+		isCollapsed: false,
+	}
 }
 
 func (s *CollapsingHighestDenseStore) Add(index int) {
-	s.addWithCount(index, float64(1))
+	s.AddWithCount(index, float64(1))
 }
 
 func (s *CollapsingHighestDenseStore) AddBin(bin Bin) {
@@ -26,85 +35,102 @@ func (s *CollapsingHighestDenseStore) AddBin(bin Bin) {
 	if count == 0 {
 		return
 	}
-	s.addWithCount(index, count)
+	s.AddWithCount(index, count)
 }
 
-func (s *CollapsingHighestDenseStore) addWithCount(index int, count float64) {
-	if s.count == 0 {
-		s.bins = make([]float64, min(growthBuffer, s.maxNumBins))
-		s.minIndex = index
-		s.maxIndex = index + len(s.bins) - 1
+func (s *CollapsingHighestDenseStore) AddWithCount(index int, count float64) {
+	if count == 0 {
+		return
 	}
-	if index < s.minIndex {
-		s.growLeft(index)
-	} else if index > s.maxIndex {
-		s.growRight(index)
-	}
-	var idx int
-	if index > s.maxIndex {
-		idx = len(s.bins) - 1
-	} else {
-		idx = index - s.minIndex
-	}
-	s.bins[idx] += count
+	arrayIndex := s.normalize(index)
+	s.bins[arrayIndex] += count
 	s.count += count
 }
 
-func (s *CollapsingHighestDenseStore) growLeft(index int) {
-	if s.minIndex < index {
-		return
-	}
-	if index <= s.minIndex-s.maxNumBins {
-		s.bins = make([]float64, s.maxNumBins)
-		s.minIndex = index
-		s.maxIndex = index + s.maxNumBins - 1
-		s.bins[s.maxNumBins-1] = s.count
-	} else if index <= s.maxIndex-s.maxNumBins {
-		maxIndex := index + s.maxNumBins - 1
-		var n float64
-		for i := max(s.minIndex, maxIndex+1); i <= s.maxIndex; i++ {
-			n += s.bins[i-s.minIndex]
-		}
-		if len(s.bins) < s.maxNumBins {
-			tmpBins := make([]float64, s.maxNumBins)
-			copy(tmpBins[s.minIndex-index:], s.bins)
-			s.bins = tmpBins
+func (s *CollapsingHighestDenseStore) normalize(index int) int {
+	if index > s.maxIndex {
+		if s.isCollapsed {
+			return len(s.bins) - 1
 		} else {
-			copy(s.bins[s.minIndex-index:], s.bins)
-			for i := 0; i < s.minIndex-index; i++ {
-				s.bins[i] = 0.0
+			s.extendRange(index, index)
+			if s.isCollapsed {
+				return len(s.bins) - 1
 			}
 		}
-		s.minIndex = index
-		s.maxIndex = maxIndex
-		s.bins[s.maxNumBins-1] += n
+	} else if index < s.minIndex {
+		s.extendRange(index, index)
+	}
+	return index - s.offset
+}
+
+func (s *CollapsingHighestDenseStore) getNewLength(newMinIndex, newMaxIndex int) int {
+	return min(s.DenseStore.getNewLength(newMinIndex, newMaxIndex), s.maxNumBins)
+}
+
+func (s *CollapsingHighestDenseStore) extendRange(newMinIndex, newMaxIndex int) {
+	newMinIndex = min(newMinIndex, s.minIndex)
+	newMaxIndex = max(newMaxIndex, s.maxIndex)
+	if s.IsEmpty() {
+		initialLength := s.getNewLength(newMinIndex, newMaxIndex)
+		s.bins = make([]float64, initialLength)
+		s.offset = newMinIndex
+		s.minIndex = newMinIndex
+		s.maxIndex = newMaxIndex
+		s.adjust(newMinIndex, newMaxIndex)
+	} else if newMinIndex >= s.offset && newMaxIndex < s.offset+len(s.bins) {
+		s.minIndex = newMinIndex
+		s.maxIndex = newMaxIndex
 	} else {
-		tmpBins := make([]float64, s.maxIndex-index+1)
-		copy(tmpBins[s.minIndex-index:], s.bins)
-		s.bins = tmpBins
-		s.minIndex = index
+		// To avoid shifting too often when nearing the capacity of the array,
+		// we may grow it before we actually reach the capacity.
+		newLength := s.getNewLength(newMinIndex, newMaxIndex)
+		if newLength > len(s.bins) {
+			tmpBins := make([]float64, newLength)
+			copy(tmpBins, s.bins)
+			s.bins = tmpBins
+		}
+		s.adjust(newMinIndex, newMaxIndex)
 	}
 }
 
-func (s *CollapsingHighestDenseStore) growRight(index int) {
-	if s.maxIndex > index || len(s.bins) >= s.maxNumBins {
-		return
-	}
-	var maxIndex int
-	if index >= s.minIndex+s.maxNumBins {
-		maxIndex = s.minIndex + s.maxNumBins - 1
+func (s *CollapsingHighestDenseStore) adjust(newMinIndex, newMaxIndex int) {
+	if newMaxIndex-newMinIndex+1 > len(s.bins) {
+		// The range of indices is too wide, buckets of lowest indices need to be collapsed.
+		newMaxIndex = newMinIndex + len(s.bins) - 1
+		if newMaxIndex <= s.minIndex {
+			// There will be only one non-empty bucket.
+			s.bins = make([]float64, len(s.bins))
+			s.offset = newMinIndex
+			s.maxIndex = newMaxIndex
+			s.bins[len(s.bins)-1] = s.count
+		} else {
+			shift := s.offset - newMinIndex
+			if shift > 0 {
+				// Collapse the buckets.
+				n := float64(0)
+				for i := newMaxIndex + 1; i <= s.maxIndex; i++ {
+					n += s.bins[i-s.offset]
+				}
+				s.resetBins(newMaxIndex+1, s.maxIndex)
+				s.bins[newMaxIndex-s.offset] += n
+				s.maxIndex = newMaxIndex
+				// Shift the buckets to make room for newMinIndex.
+				s.shiftCounts(shift)
+			} else {
+				// Shift the buckets to make room for newMaxIndex.
+				s.shiftCounts(shift)
+				s.maxIndex = newMaxIndex
+			}
+		}
+		s.minIndex = newMinIndex
+		s.isCollapsed = true
 	} else {
-		// Expand bins by up to an extra growthBuffers bins than strictly required.
-		maxIndex = min(index+growthBuffer, s.minIndex+s.maxNumBins-1)
+		s.centerCounts(newMinIndex, newMaxIndex)
 	}
-	tmpBins := make([]float64, maxIndex-s.minIndex+1)
-	copy(tmpBins, s.bins)
-	s.bins = tmpBins
-	s.maxIndex = maxIndex
 }
 
 func (s *CollapsingHighestDenseStore) MergeWith(other Store) {
-	if other.TotalCount() == 0 {
+	if other.IsEmpty() {
 		return
 	}
 	o, ok := other.(*CollapsingHighestDenseStore)
@@ -114,39 +140,47 @@ func (s *CollapsingHighestDenseStore) MergeWith(other Store) {
 		}
 		return
 	}
-	if s.count == 0 {
-		s.copy(o)
-		return
+	if o.minIndex < s.minIndex || o.maxIndex > s.maxIndex {
+		s.extendRange(o.minIndex, o.maxIndex)
 	}
-	s.growRight(o.maxIndex)
-	s.growLeft(o.minIndex)
-	for i := max(s.minIndex, o.minIndex); i <= min(s.maxIndex, o.maxIndex); i++ {
-		s.bins[i-s.minIndex] += o.bins[i-o.minIndex]
+	idx := o.maxIndex
+	for ; idx > s.maxIndex && idx >= o.minIndex; idx-- {
+		s.bins[len(s.bins)-1] += o.bins[idx-o.offset]
 	}
-	var n float64
-	for i := max(s.maxIndex+1, o.minIndex); i <= o.maxIndex; i++ {
-		n += o.bins[i-o.minIndex]
+	for ; idx > o.minIndex; idx-- {
+		s.bins[idx-s.offset] += o.bins[idx-o.offset]
 	}
-	s.bins[len(s.bins)-1] += n
+	// This is a separate test so that the comparison in the previous loop is strict (>) and handles
+	// o.minIndex = Integer.MIN_VALUE.
+	if idx == o.minIndex {
+		s.bins[idx-s.offset] += o.bins[idx-o.offset]
+	}
 	s.count += o.count
 }
 
-func (s *CollapsingHighestDenseStore) copy(o *CollapsingHighestDenseStore) {
-	s.bins = make([]float64, len(o.bins))
-	copy(s.bins, o.bins)
-	s.minIndex = o.minIndex
-	s.maxIndex = o.maxIndex
-	s.count = o.count
-	s.maxNumBins = o.maxNumBins
+func (s *CollapsingHighestDenseStore) Copy() Store {
+	bins := make([]float64, len(s.bins))
+	copy(bins, s.bins)
+	return &CollapsingHighestDenseStore{
+		DenseStore: DenseStore{
+			bins:     bins,
+			count:    s.count,
+			offset:   s.offset,
+			minIndex: s.minIndex,
+			maxIndex: s.maxIndex,
+		},
+		maxNumBins:  s.maxNumBins,
+		isCollapsed: s.isCollapsed,
+	}
 }
 
 func (s *CollapsingHighestDenseStore) FromProto(pb *sketchpb.Store) Store {
 	store := NewCollapsingHighestDenseStore(s.maxNumBins)
 	for idx, count := range pb.BinCounts {
-		store.addWithCount(int(idx), count)
+		store.AddWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
-		store.addWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
 	return store
 }
