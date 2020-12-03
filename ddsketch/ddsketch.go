@@ -67,7 +67,8 @@ func (s *DDSketch) Copy() *DDSketch {
 	}
 }
 
-func (s *DDSketch) getValueAtQuantile(quantile float64) (float64, error) {
+// Quantile computes the quantile value.
+func (s *DDSketch) Quantile(quantile float64) (float64, error) {
 	if quantile < 0 || quantile > 1 {
 		return math.NaN(), errors.New("The quantile must be between 0 and 1.")
 	}
@@ -88,10 +89,11 @@ func (s *DDSketch) getValueAtQuantile(quantile float64) (float64, error) {
 	}
 }
 
-func (s *DDSketch) getValuesAtQuantiles(quantiles []float64) ([]float64, error) {
+// Quantiles computes the quantile values.
+func (s *DDSketch) Quantiles(quantiles []float64) ([]float64, error) {
 	values := make([]float64, len(quantiles))
 	for i, q := range quantiles {
-		val, err := s.getValueAtQuantile(q)
+		val, err := s.Quantile(q)
 		if err != nil {
 			return nil, err
 		}

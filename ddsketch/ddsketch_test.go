@@ -58,7 +58,7 @@ func AssertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch *DDSketc
 			upperQuantile := data.UpperQuantile(q)
 			minExpectedValue := math.Min(lowerQuantile*(1-alpha), lowerQuantile*(1+alpha))
 			maxExpectedValue := math.Max(upperQuantile*(1-alpha), upperQuantile*(1+alpha))
-			quantile, _ := sketch.getValueAtQuantile(q)
+			quantile, _ := sketch.Quantile(q)
 			assert.True(quantile >= minExpectedValue-floatingPointAcceptableError)
 			assert.True(quantile <= maxExpectedValue+floatingPointAcceptableError)
 		}
@@ -218,8 +218,8 @@ func TestConsistentQuantile(t *testing.T) {
 		for _, v := range vals {
 			sketch.Add(v)
 		}
-		q1, _ := sketch.getValueAtQuantile(q)
-		q2, _ := sketch.getValueAtQuantile(q)
+		q1, _ := sketch.Quantile(q)
+		q2, _ := sketch.Quantile(q)
 		assert.Equal(t, q1, q2)
 	}
 }
@@ -242,9 +242,9 @@ func TestConsistentMerge(t *testing.T) {
 		for _, v := range vals {
 			sketch2.Add(v)
 		}
-		quantilesBeforeMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
+		quantilesBeforeMerge, _ := sketch2.Quantiles(testQuantiles)
 		sketch1.MergeWith(sketch2)
-		quantilesAfterMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
+		quantilesAfterMerge, _ := sketch2.Quantiles(testQuantiles)
 		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
 	}
 }
