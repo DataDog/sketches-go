@@ -15,14 +15,16 @@ import (
 )
 
 const (
-	// Assuming we write the index as index(v) = floor(multiplier*ln(2)/ln(gamma)*(e+As^3+Bs^2+Cs)), where v=2^e(1+s)
-	// and gamma = (1+relativeAccuracy)/(1-relativeAccuracy), those are the coefficients that minimize the multiplier,
-	// therefore the memory footprint of the sketch, while ensuring the relative accuracy of the sketch.
 	A = 6.0 / 35.0
 	B = -3.0 / 5.0
 	C = 10.0 / 7.0
 )
 
+// A fast IndexMapping that approximates the memory-optimal LogarithmicMapping by extracting the floor value
+// of the logarithm to the base 2 from the binary representations of floating-point values and cubically
+// interpolating the logarithm in-between.
+// More detailed documentation of this method can be found in:
+// <a href="https://github.com/DataDog/sketches-java/">sketches-java</a>
 type CubicallyInterpolatedMapping struct {
 	relativeAccuracy      float64
 	multiplier            float64
@@ -73,6 +75,7 @@ func (m *CubicallyInterpolatedMapping) Value(index int) float64 {
 	return m.approximateInverseLog((float64(index)-m.normalizedIndexOffset)/m.multiplier) * (1 + m.relativeAccuracy)
 }
 
+// Return an approximation of log(1) + Math.log(x) / Math.log(base(2)).
 func (m *CubicallyInterpolatedMapping) approximateLog(x float64) float64 {
 	bits := math.Float64bits(x)
 	e := getExponent(bits)
@@ -80,6 +83,7 @@ func (m *CubicallyInterpolatedMapping) approximateLog(x float64) float64 {
 	return ((A*s+B)*s+C)*s + e
 }
 
+// The exact inverse of approximateLog.
 func (m *CubicallyInterpolatedMapping) approximateInverseLog(x float64) float64 {
 	exponent := math.Floor(x)
 	// Derived from Cardano's formula

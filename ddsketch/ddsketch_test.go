@@ -27,7 +27,7 @@ var (
 )
 
 func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
-	sketch, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+	sketch, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 	data := dataset.NewDataset()
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
@@ -49,7 +49,7 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 
 func AssertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch *DDSketch, alpha float64) {
 	assert := assert.New(t)
-	assert.Equal(data.Count, sketch.getCount())
+	assert.Equal(data.Count, sketch.GetCount())
 	if data.Count == 0 {
 		assert.True(sketch.IsEmpty())
 	} else {
@@ -58,7 +58,7 @@ func AssertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch *DDSketc
 			upperQuantile := data.UpperQuantile(q)
 			minExpectedValue := math.Min(lowerQuantile*(1-alpha), lowerQuantile*(1+alpha))
 			maxExpectedValue := math.Max(upperQuantile*(1-alpha), upperQuantile*(1+alpha))
-			quantile, _ := sketch.getValueAtQuantile(q)
+			quantile, _ := sketch.GetValueAtQuantile(q)
 			assert.True(quantile >= minExpectedValue-floatingPointAcceptableError)
 			assert.True(quantile <= maxExpectedValue+floatingPointAcceptableError)
 		}
@@ -114,14 +114,14 @@ func TestMergeNormal(t *testing.T) {
 	for _, alpha := range testAlphas {
 		for _, n := range testSizes {
 			data := dataset.NewDataset()
-			sketch1, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch1, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			generator1 := dataset.NewNormal(35, 1)
 			for i := 0; i < n; i += 3 {
 				value := generator1.Generate()
 				sketch1.Add(value)
 				data.Add(value)
 			}
-			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch2, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			generator2 := dataset.NewNormal(-10, 2)
 			for i := 1; i < n; i += 3 {
 				value := generator2.Generate()
@@ -130,7 +130,7 @@ func TestMergeNormal(t *testing.T) {
 			}
 			sketch1.MergeWith(sketch2)
 
-			sketch3, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch3, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			generator3 := dataset.NewNormal(40, 0.5)
 			for i := 2; i < n; i += 3 {
 				value := generator3.Generate()
@@ -148,8 +148,8 @@ func TestMergeEmpty(t *testing.T) {
 		for _, n := range testSizes {
 			data := dataset.NewDataset()
 			// Merge a non-empty sketch to an empty sketch
-			sketch1, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
-			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch1, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch2, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			generator := dataset.NewExponential(5)
 			for i := 0; i < n; i++ {
 				value := generator.Generate()
@@ -160,7 +160,7 @@ func TestMergeEmpty(t *testing.T) {
 			AssertSketchesAccurate(t, data, sketch1, alpha)
 
 			// Merge an empty sketch to a non-empty sketch
-			sketch3, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch3, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			sketch2.MergeWith(sketch3)
 			AssertSketchesAccurate(t, data, sketch2, alpha)
 			// Sketch3 should still be empty
@@ -173,14 +173,14 @@ func TestMergeMixed(t *testing.T) {
 	for _, alpha := range testAlphas {
 		for _, n := range testSizes {
 			data := dataset.NewDataset()
-			sketch1, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch1, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			generator1 := dataset.NewNormal(100, 1)
 			for i := 0; i < n; i += 3 {
 				value := generator1.Generate()
 				sketch1.Add(value)
 				data.Add(value)
 			}
-			sketch2, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch2, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			generator2 := dataset.NewExponential(5)
 			for i := 1; i < n; i += 3 {
 				value := generator2.Generate()
@@ -189,7 +189,7 @@ func TestMergeMixed(t *testing.T) {
 			}
 			sketch1.MergeWith(sketch2)
 
-			sketch3, _ := MemoryOptimalCollapsingLowestSketch(alpha, testMaxBins)
+			sketch3, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
 			generator3 := dataset.NewExponential(0.1)
 			for i := 2; i < n; i += 3 {
 				value := generator3.Generate()
@@ -212,14 +212,14 @@ func TestConsistentQuantile(t *testing.T) {
 	vfuzzer := fuzz.New().NilChance(0).NumElements(10, 500)
 	fuzzer := fuzz.New()
 	for i := 0; i < nTests; i++ {
-		sketch, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
+		sketch, _ := LogCollapsingLowestDenseDDSketch(testAlpha, testMaxBins)
 		vfuzzer.Fuzz(&vals)
 		fuzzer.Fuzz(&q)
 		for _, v := range vals {
 			sketch.Add(v)
 		}
-		q1, _ := sketch.getValueAtQuantile(q)
-		q2, _ := sketch.getValueAtQuantile(q)
+		q1, _ := sketch.GetValueAtQuantile(q)
+		q2, _ := sketch.GetValueAtQuantile(q)
 		assert.Equal(t, q1, q2)
 	}
 }
@@ -231,20 +231,20 @@ func TestConsistentMerge(t *testing.T) {
 	testAlpha := 0.01
 	testSize := 1000
 	fuzzer := fuzz.New().NilChance(0).NumElements(10, 1000)
-	sketch1, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
+	sketch1, _ := LogCollapsingLowestDenseDDSketch(testAlpha, testMaxBins)
 	generator := dataset.NewNormal(50, 1)
 	for i := 0; i < testSize; i++ {
 		sketch1.Add(generator.Generate())
 	}
 	for i := 0; i < nTests; i++ {
-		sketch2, _ := MemoryOptimalCollapsingLowestSketch(testAlpha, testMaxBins)
+		sketch2, _ := LogCollapsingLowestDenseDDSketch(testAlpha, testMaxBins)
 		fuzzer.Fuzz(&vals)
 		for _, v := range vals {
 			sketch2.Add(v)
 		}
-		quantilesBeforeMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
+		quantilesBeforeMerge, _ := sketch2.GetValuesAtQuantiles(testQuantiles)
 		sketch1.MergeWith(sketch2)
-		quantilesAfterMerge, _ := sketch2.getValuesAtQuantiles(testQuantiles)
+		quantilesAfterMerge, _ := sketch2.GetValuesAtQuantiles(testQuantiles)
 		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
 	}
 }

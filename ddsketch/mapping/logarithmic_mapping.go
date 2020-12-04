@@ -14,6 +14,9 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
+// An IndexMapping that is memory-optimal, that is to say that given a targeted relative accuracy, it
+// requires the least number of indices to cover a given range of values. This is done by logarithmically
+// mapping floating-point values to integers.
 type LogarithmicMapping struct {
 	relativeAccuracy      float64
 	multiplier            float64
@@ -81,6 +84,7 @@ func (m *LogarithmicMapping) RelativeAccuracy() float64 {
 	return m.relativeAccuracy
 }
 
+// Generates a protobuf representation of this LogarithicMapping.
 func (m *LogarithmicMapping) ToProto() *sketchpb.IndexMapping {
 	return &sketchpb.IndexMapping{
 		Gamma:         (1 + m.relativeAccuracy) / (1 - m.relativeAccuracy),
@@ -89,6 +93,7 @@ func (m *LogarithmicMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
+// Returns an instance of LogarithmicMapping that matches the provided protobuf representation.
 func (m *LogarithmicMapping) FromProto(pb *sketchpb.IndexMapping) IndexMapping {
 	mapping, err := NewLogarithmicMappingWithGamma(pb.Gamma, pb.IndexOffset)
 	if err != nil {
