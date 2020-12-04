@@ -120,14 +120,6 @@ func (m *CubicallyInterpolatedMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
-func (m *CubicallyInterpolatedMapping) FromProto(pb *sketchpb.IndexMapping) IndexMapping {
-	mapping, err := NewCubicallyInterpolatedMappingWithGamma(pb.Gamma, pb.IndexOffset)
-	if err != nil {
-		panic("Can't create CubicallyInterpolatedMapping from sketchpb.IndexMapping")
-	}
-	return mapping
-}
-
 func (m *CubicallyInterpolatedMapping) string() string {
 	var buffer bytes.Buffer
 	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v, normalizedIndexOffset: %v\n", m.relativeAccuracy, m.multiplier, m.normalizedIndexOffset))

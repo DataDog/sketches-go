@@ -22,5 +22,16 @@ type Store interface {
 	KeyAtRank(rank float64) int
 	MergeWith(store Store)
 	ToProto() *sketchpb.Store
-	FromProto(pb *sketchpb.Store) Store // Creates and returns a new Store rather than updating the caller
+}
+
+// Returns an instance of DenseStore that contains the data in the provided protobuf representation.
+func FromProto(pb *sketchpb.Store) *DenseStore {
+	store := NewDenseStore()
+	for idx, count := range pb.BinCounts {
+		store.AddWithCount(int(idx), count)
+	}
+	for idx, count := range pb.ContiguousBinCounts {
+		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+	}
+	return store
 }

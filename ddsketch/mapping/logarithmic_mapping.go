@@ -93,15 +93,6 @@ func (m *LogarithmicMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
-// Returns an instance of LogarithmicMapping that matches the provided protobuf representation.
-func (m *LogarithmicMapping) FromProto(pb *sketchpb.IndexMapping) IndexMapping {
-	mapping, err := NewLogarithmicMappingWithGamma(pb.Gamma, pb.IndexOffset)
-	if err != nil {
-		panic("Can't create LogarithmicMapping from sketchpb.IndexMapping.")
-	}
-	return mapping
-}
-
 func (m *LogarithmicMapping) string() string {
 	var buffer bytes.Buffer
 	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v, normalizedIndexOffset: %v\n", m.relativeAccuracy, m.multiplier, m.normalizedIndexOffset))

@@ -231,14 +231,3 @@ func (s *DenseStore) ToProto() *sketchpb.Store {
 		ContiguousBinIndexOffset: int32(s.minIndex),
 	}
 }
-
-func (s *DenseStore) FromProto(pb *sketchpb.Store) Store {
-	store := NewDenseStore()
-	for idx, count := range pb.BinCounts {
-		store.AddWithCount(int(idx), count)
-	}
-	for idx, count := range pb.ContiguousBinCounts {
-		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
-	}
-	return store
-}

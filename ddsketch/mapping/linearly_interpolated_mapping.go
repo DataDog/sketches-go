@@ -107,15 +107,6 @@ func (m *LinearlyInterpolatedMapping) ToProto() *sketchpb.IndexMapping {
 	}
 }
 
-// Returns an instance of LinearlyInterpolatedMapping that matches the provided protobuf representation.
-func (m *LinearlyInterpolatedMapping) FromProto(pb *sketchpb.IndexMapping) IndexMapping {
-	mapping, err := NewLinearlyInterpolatedMappingWithGamma(pb.Gamma, pb.IndexOffset)
-	if err != nil {
-		panic("Can't create LinearlyInterpolatedMapping from sketchpb.IndexMapping")
-	}
-	return mapping
-}
-
 func (m *LinearlyInterpolatedMapping) string() string {
 	var buffer bytes.Buffer
 	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v, normalizedIndexOffset: %v\n", m.relativeAccuracy, m.multiplier, m.normalizedIndexOffset))

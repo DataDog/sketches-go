@@ -85,33 +85,6 @@ func TestCubicallyInterpolatedMappingAccuracy(t *testing.T) {
 	}
 }
 
-func TestLogarithmicMappingSerialization(t *testing.T) {
-	mapping1, _ := NewLogarithmicMapping(1e-2)
-	mapping2, _ := NewLogarithmicMapping(0.1)
-	deserializedMapping := mapping2.FromProto(mapping1.ToProto())
-	assert.True(t, mapping1.Equals(deserializedMapping))
-	// The calling mapping doesn't change
-	assert.Equal(t, mapping2.relativeAccuracy, 0.1)
-}
-
-func TestLinearlyInterpolatedMappingSerialization(t *testing.T) {
-	mapping1, _ := NewLinearlyInterpolatedMapping(1e-2)
-	mapping2, _ := NewLinearlyInterpolatedMapping(0.1)
-	deserializedMapping := mapping2.FromProto(mapping1.ToProto())
-	assert.True(t, mapping1.Equals(deserializedMapping))
-	// The calling mapping doesn't change
-	assert.Equal(t, mapping2.relativeAccuracy, 0.1)
-}
-
-func TestCubicallyInterpolatedMappingSerialization(t *testing.T) {
-	mapping1, _ := NewCubicallyInterpolatedMapping(1e-2)
-	mapping2, _ := NewCubicallyInterpolatedMapping(0.1)
-	deserializedMapping := mapping2.FromProto(mapping1.ToProto())
-	assert.True(t, mapping1.Equals(deserializedMapping))
-	// The calling mapping doesn't change
-	assert.Equal(t, mapping2.relativeAccuracy, 0.1)
-}
-
 func TestSerialization(t *testing.T) {
 	m, _ := NewCubicallyInterpolatedMapping(1e-2)
 	deserializedMapping, err := FromProto(m.ToProto())
