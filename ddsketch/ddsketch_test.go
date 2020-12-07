@@ -11,6 +11,9 @@ import (
 	"testing"
 
 	"github.com/DataDog/sketches-go/dataset"
+	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
+
+	"github.com/golang/protobuf/proto"
 	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/assert"
 )
@@ -42,8 +45,15 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 		data.Add(-value)
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
+
 	// Serialize/deserialize the sketch
-	deserializedSketch, _ := sketch.FromProto(sketch.ToProto())
+	bytes, err := proto.Marshal(sketch.ToProto())
+	assert.Nil(t, err)
+	var sketchPb sketchpb.DDSketch
+	err = proto.Unmarshal(bytes, &sketchPb)
+	assert.Nil(t, err)
+	deserializedSketch, err := sketch.FromProto(&sketchPb)
+	assert.Nil(t, err)
 	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }
 
