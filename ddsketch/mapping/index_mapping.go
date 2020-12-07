@@ -23,7 +23,6 @@ type IndexMapping interface {
 	MinIndexableValue() float64
 	MaxIndexableValue() float64
 	ToProto() *sketchpb.IndexMapping
-	FromProto(pb *sketchpb.IndexMapping) IndexMapping // Creates and returns a new IndexMapping rather than updating the caller
 }
 
 // FromProto returns an Index mapping from the protobuf definition of it

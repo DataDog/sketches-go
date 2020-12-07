@@ -5,11 +5,7 @@
 
 package store
 
-import (
-	"math"
-
-	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
-)
+import "math"
 
 // CollapsingLowestDenseStore is a dynamically growing contiguous (non-sparse) store.
 // The lower bins get combined so that the total number of bins do not exceed maxNumBins.
@@ -180,17 +176,6 @@ func (s *CollapsingLowestDenseStore) Copy() Store {
 		maxNumBins:  s.maxNumBins,
 		isCollapsed: s.isCollapsed,
 	}
-}
-
-func (s *CollapsingLowestDenseStore) FromProto(pb *sketchpb.Store) Store {
-	store := NewCollapsingLowestDenseStore(s.maxNumBins)
-	for idx, count := range pb.BinCounts {
-		store.AddWithCount(int(idx), count)
-	}
-	for idx, count := range pb.ContiguousBinCounts {
-		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
-	}
-	return store
 }
 
 func max(x, y int) int {

@@ -43,7 +43,7 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
 	// Serialize/deserialize the sketch
-	deserializedSketch := sketch.FromProto(sketch.ToProto())
+	deserializedSketch, _ := sketch.FromProto(sketch.ToProto())
 	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }
 

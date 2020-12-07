@@ -204,11 +204,15 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 }
 
 // Builds a new instance of DDSketch based on the provided protobuf representation.
-func (s *DDSketch) FromProto(pb *sketchpb.DDSketch) *DDSketch {
-	return &DDSketch{
-		IndexMapping:       s.IndexMapping.FromProto(pb.Mapping),
-		positiveValueStore: s.positiveValueStore.FromProto(pb.PositiveValues),
-		negativeValueStore: s.negativeValueStore.FromProto(pb.NegativeValues),
-		zeroCount:          pb.ZeroCount,
+func (s *DDSketch) FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
+	m, err := mapping.FromProto(pb.Mapping)
+	if err != nil {
+		return nil, err
 	}
+	return &DDSketch{
+		IndexMapping:       m,
+		positiveValueStore: store.FromProto(pb.PositiveValues),
+		negativeValueStore: store.FromProto(pb.NegativeValues),
+		zeroCount:          pb.ZeroCount,
+	}, nil
 }

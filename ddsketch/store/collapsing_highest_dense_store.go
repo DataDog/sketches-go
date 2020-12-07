@@ -5,11 +5,7 @@
 
 package store
 
-import (
-	"math"
-
-	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
-)
+import "math"
 
 type CollapsingHighestDenseStore struct {
 	DenseStore
@@ -175,15 +171,4 @@ func (s *CollapsingHighestDenseStore) Copy() Store {
 		maxNumBins:  s.maxNumBins,
 		isCollapsed: s.isCollapsed,
 	}
-}
-
-func (s *CollapsingHighestDenseStore) FromProto(pb *sketchpb.Store) Store {
-	store := NewCollapsingHighestDenseStore(s.maxNumBins)
-	for idx, count := range pb.BinCounts {
-		store.AddWithCount(int(idx), count)
-	}
-	for idx, count := range pb.ContiguousBinCounts {
-		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
-	}
-	return store
 }
