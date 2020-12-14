@@ -1,64 +1,30 @@
-# sketches-go
+# sketches-go 
 
-This repo contains Go implementations of the distributed quantile sketch algorithms GKArray [1] and DDSketch [2]. Both sketches are fully mergeable, meaning that multiple sketches from distributed systems can be combined in a central node.
+This repo contains Go implementations of the distributed quantile sketch algorithms 
+DDSketch [1]. DDSketch has relative-error guarantees for any quantile q in [0, 1].
+That is if the true value of the qth-quantile is `x` then DDSketch returns a value `y` 
+such that `|x-y| / x < e` where `e` is the relative error parameter. DDSketch is also 
+fully mergeable, meaning that multiple sketches from distributed systems can be combined 
+in a central node.
 
-## GKArray
+Our default implementation, returned from `NewDefaultDDSketch(relativeAccuracy)`, is
+guaranteed [1] not to grow too large in size for any data that can be described by a
+distribution whose tails are sub-exponential.
 
-GKArray provides a sketch with a rank error guarantee of espilon (without merge) or 2\*epsilon (with merge). The default value of epsilon is 0.01.
-
-### Usage
-
-```go
-import "github.com/DataDog/sketches-go/gkarray"
-
-sketch := gk.NewDefaultGKArray()
-```
-
-Add some values to the sketch.
-
-```go
-import "math/rand"
-
-for i := 0; i < 500; i++ {
-  v := rand.NormFloat64()
-  sketch.Add(v)
-}
-```
-
-Find the quantiles to within epsilon of rank.
-
-```go
-qs := []float64{0.5, 0.75, 0.9, 1}
-quantiles := make([]float64, len(qs))
-for i, q := range qs {
-  quantiles[i] = sketch.Quantile(q)
-}
-```
-
-Merge another `GKArray` into `sketch`.
-
-```go
-anotherSketch := gk.NewDefaultGKArray()
-for i := 0; i < 500; i++ {
-  v := rand.NormFloat64()
-  anotherSketch.Add(v)
-}
-sketch.Merge(anotherSketch)
-```
-
-Now the quantiles will be accurate to within 2\*epsilon of rank.
-
-## DDSketch
-
-DDSketch has a relative error guarantee of alpha for any quantile q in [0, 1] that is not too small. Concretely, the q-quantile will be accurate up to a relative error of alpha as long as it belongs to one of the m bins kept by the sketch. The default values of alpha and m are 0.01 and 2048, repectively. In addition, a value that is smaller than min_value in magnitude is indistinguishable from 0. The default min_value is 1.0e-9. For more details, refer to [2].
+We also provide implementations, returned by `LogCollapsingLowestDenseDDSketch(relativeAccuracy, maxNumBins)`
+and `LogCollapsingHighestDenseDDSketch(relativeAccuracy, maxNumBins)`, where the q-quantile
+will be accurate up to the specified relative error for q that is not too small (or large).
+Concretely, the q-quantile will be accurate up to the specified relative error as long as it
+belongs to one of the `m` bins kept by the sketch. For instance, If the values are time in seconds, 
+`maxNumBins = 2048` covers a time range from 80 microseconds to 1 year.
 
 ### Usage
 
 ```go
 import "github.com/DataDog/sketches-go/ddsketch"
 
-c := ddsketch.NewDefaultConfig()
-sketch := ddsketch.NewDDSketch(c)
+relativeAccuracy := 0.01
+sketch := ddsketch.NewDefaultDDSketch(relativeAccuracy)
 ```
 
 Add values to the sketch.
@@ -76,28 +42,25 @@ Find the quantiles to within alpha relative error.
 
 ```go
 qs := []float64{0.5, 0.75, 0.9, 1}
-quantiles := make([]float64, len(qs))
-for i, q := range qs {
-  quantiles[i] = sketch.Quantile(q)
-}
+quantiles, err := sketch.GetValuesAtQuantiles(qs)
 ```
 
 Merge another `DDSketch` into `sketch`.
 
 ```go
-anotherSketch := ddsketch.NewDDSketch(c)
+anotherSketch := ddsketch.NewDefaultDDSketch(relativeAccuracy)
 for i := 0; i < 500; i++ {
   v := rand.NormFloat64()
   anotherSketch.Add(v)
 }
-sketch.Merge(anotherSketch)
+sketch.MergeWith(anotherSketch)
 ```
 
-The quantiles are still accurate to within alpha relative error.
+The quantiles are in `sketch` are still accurate to within `relativeAccuracy`.
 
 ## References
 
-[1] Michael B. Greenwald and Sanjeev Khanna. Space-efficient online computation of quantile summaries. In Proc. 2001 ACM
-SIGMOD International Conference on Management of Data, SIGMOD ’01, pages 58–66. ACM, 2001.
-
-[2] Charles Masson, Jee Rim and Homin K. Lee. All the nines: a fully mergeable quantile sketch with relative-error guarantees for arbitrarily large quantiles. 2018.
+[1] Charles Masson and Jee E Rim and Homin K. Lee. DDSketch: A fast and fully-mergeable quantile sketch with 
+relative-error guarantees. PVLDB, 12(12): 2195-2205, 2019. (The code referenced in the paper, including our 
+implementation of the the Greenwald-Khanna (GK) algorithm, can be found at: 
+https://github.com/DataDog/sketches-go/releases/tag/v0.0.1 )
