@@ -1,6 +1,6 @@
 # sketches-go 
 
-This repo contains Go implementations of the distributed quantile sketch algorithms 
+This repo contains Go implementations of the distributed quantile sketch algorithm
 DDSketch [1]. DDSketch has relative-error guarantees for any quantile q in [0, 1].
 That is if the true value of the qth-quantile is `x` then DDSketch returns a value `y` 
 such that `|x-y| / x < e` where `e` is the relative error parameter. DDSketch is also 
