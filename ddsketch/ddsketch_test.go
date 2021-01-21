@@ -46,13 +46,20 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
 
-	// Serialize/deserialize the sketch
+	// Serialize/deserialize the sketch to protobuf representation
 	bytes, err := proto.Marshal(sketch.ToProto())
 	assert.Nil(t, err)
 	var sketchPb sketchpb.DDSketch
 	err = proto.Unmarshal(bytes, &sketchPb)
 	assert.Nil(t, err)
 	deserializedSketch, err := sketch.FromProto(&sketchPb)
+	assert.Nil(t, err)
+	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
+
+	// Serialize/deserialize the sketch to byte representation
+	serialized, err := sketch.ToBytes()
+	assert.Nil(t, err)
+	deserializedSketch, err = FromBytes(serialized)
 	assert.Nil(t, err)
 	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }

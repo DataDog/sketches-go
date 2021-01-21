@@ -6,6 +6,7 @@
 package ddsketch
 
 import (
+	"encoding/binary"
 	"errors"
 	"math"
 
@@ -214,5 +215,59 @@ func (s *DDSketch) FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 		positiveValueStore: store.FromProto(pb.PositiveValues),
 		negativeValueStore: store.FromProto(pb.NegativeValues),
 		zeroCount:          pb.ZeroCount,
+	}, nil
+}
+
+// Encodes a DDSketch as bytes
+func (s *DDSketch) ToBytes() ([][]byte, error) {
+	m, err := mapping.ToBytes(s.IndexMapping)
+	if err != nil {
+		return nil, err
+	}
+
+	pvs, err := store.ToBytes(s.positiveValueStore)
+	if err != nil {
+		return nil, err
+	}
+
+	nvs, err := store.ToBytes(s.negativeValueStore)
+	if err != nil {
+		return nil, err
+	}
+
+	b := make([][]byte, 4)
+	b[0] = m
+	b[1] = pvs
+	b[2] = nvs
+	b[3] = make([]byte, 8)
+	binary.LittleEndian.PutUint64(b[3], math.Float64bits(s.zeroCount))
+	return b, nil
+}
+
+// Builds a new DDSketches by decoding the provided byte slice
+func FromBytes(b [][]byte) (*DDSketch, error) {
+	if len(b) != 4 {
+		return nil, errors.New("Byte slice must have length 4")
+	}
+	m, err := mapping.FromBytes(b[0])
+	if err != nil {
+		return nil, err
+	}
+
+	pvs, err := store.FromBytes(b[1])
+	if err != nil {
+		return nil, err
+	}
+
+	nvs, err := store.FromBytes(b[2])
+	if err != nil {
+		return nil, err
+	}
+
+	return &DDSketch{
+		IndexMapping:       m,
+		positiveValueStore: pvs,
+		negativeValueStore: nvs,
+		zeroCount:          math.Float64frombits(binary.LittleEndian.Uint64(b[3])),
 	}, nil
 }

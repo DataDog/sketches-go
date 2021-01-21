@@ -6,7 +6,10 @@
 package mapping
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
+
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -37,4 +40,30 @@ func FromProto(m *sketchpb.IndexMapping) (IndexMapping, error) {
 	default:
 		return nil, fmt.Errorf("interpolation not supported: %d", m.Interpolation)
 	}
+}
+
+// ToBytes generates a byte representation of an Index mapping
+func ToBytes(m IndexMapping) ([]byte, error) {
+	pbMap := m.ToProto()
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(pbMap)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromBytes returns an Index mapping from the byte representation of it
+func FromBytes(b []byte) (IndexMapping, error) {
+	buf := bytes.NewBuffer(b)
+	dec := gob.NewDecoder(buf)
+
+	var pbMap *sketchpb.IndexMapping
+	err := dec.Decode(&pbMap)
+	if err != nil {
+		return nil, err
+	}
+	return FromProto(pbMap)
 }

@@ -6,6 +6,9 @@
 package store
 
 import (
+	"bytes"
+	"encoding/gob"
+
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -34,4 +37,30 @@ func FromProto(pb *sketchpb.Store) *DenseStore {
 		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
 	return store
+}
+
+// ToBytes generates a byte representation of a Store
+func ToBytes(s Store) ([]byte, error) {
+	pbStore := s.ToProto()
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(pbStore)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromBytes returns a Store from the byte representation of it
+func FromBytes(b []byte) (Store, error) {
+	buf := bytes.NewBuffer(b)
+	dec := gob.NewDecoder(buf)
+
+	var pbStore *sketchpb.Store
+	err := dec.Decode(&pbStore)
+	if err != nil {
+		return nil, err
+	}
+	return FromProto(pbStore), nil
 }
