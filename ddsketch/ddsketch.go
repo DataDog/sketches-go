@@ -203,8 +203,8 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 	}
 }
 
-// Builds a new instance of DDSketch based on the provided protobuf representation.
-func (s *DDSketch) FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
+// FromProto builds a new instance of DDSketch based on the provided protobuf representation.
+func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 	m, err := mapping.FromProto(pb.Mapping)
 	if err != nil {
 		return nil, err

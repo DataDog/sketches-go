@@ -21,27 +21,33 @@ type LogarithmicMapping struct {
 	relativeAccuracy      float64
 	multiplier            float64
 	normalizedIndexOffset float64
+	minIndexableValue     float64
+	maxIndexableValue     float64
 }
 
 func NewLogarithmicMapping(relativeAccuracy float64) (*LogarithmicMapping, error) {
 	if relativeAccuracy <= 0 || relativeAccuracy >= 1 {
 		return nil, errors.New("The relative accuracy must be between 0 and 1.")
 	}
-	return &LogarithmicMapping{
+	m := &LogarithmicMapping{
 		relativeAccuracy: relativeAccuracy,
 		multiplier:       1 / math.Log1p(2*relativeAccuracy/(1-relativeAccuracy)),
-	}, nil
+	}
+	m.updateIndexableValues()
+	return m, nil
 }
 
 func NewLogarithmicMappingWithGamma(gamma, indexOffset float64) (*LogarithmicMapping, error) {
 	if gamma <= 1 {
 		return nil, errors.New("Gamma must be greater than 1.")
 	}
-	return &LogarithmicMapping{
+	m := &LogarithmicMapping{
 		relativeAccuracy:      1 - 2/(1+gamma),
 		multiplier:            1 / math.Log(gamma),
 		normalizedIndexOffset: indexOffset,
-	}, nil
+	}
+	m.updateIndexableValues()
+	return m, nil
 }
 
 func (m *LogarithmicMapping) Equals(other IndexMapping) bool {
@@ -67,14 +73,19 @@ func (m *LogarithmicMapping) Value(index int) float64 {
 }
 
 func (m *LogarithmicMapping) MinIndexableValue() float64 {
-	return math.Max(
-		math.Exp((math.MinInt32-m.normalizedIndexOffset)/m.multiplier+1), // so that index >= MinInt32
-		minNormalFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
-	)
+	return m.minIndexableValue
 }
 
 func (m *LogarithmicMapping) MaxIndexableValue() float64 {
-	return math.Min(
+	return m.maxIndexableValue
+}
+
+func (m *LogarithmicMapping) updateIndexableValues() {
+	m.minIndexableValue = math.Max(
+		math.Exp((math.MinInt32-m.normalizedIndexOffset)/m.multiplier+1), // so that index >= MinInt32
+		minNormalFloat64*(1+m.relativeAccuracy)/(1-m.relativeAccuracy),
+	)
+	m.maxIndexableValue = math.Min(
 		math.Exp((math.MaxInt32-m.normalizedIndexOffset)/m.multiplier-1), // so that index <= MaxInt32
 		math.Exp(expOverflow)/(1+m.relativeAccuracy),                     // so that math.Exp does not overflow
 	)

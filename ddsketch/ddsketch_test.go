@@ -52,7 +52,7 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	var sketchPb sketchpb.DDSketch
 	err = proto.Unmarshal(bytes, &sketchPb)
 	assert.Nil(t, err)
-	deserializedSketch, err := sketch.FromProto(&sketchPb)
+	deserializedSketch, err := FromProto(&sketchPb)
 	assert.Nil(t, err)
 	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }
