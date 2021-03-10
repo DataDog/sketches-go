@@ -41,12 +41,10 @@ func (s *DenseStore) Add(index int) {
 }
 
 func (s *DenseStore) AddBin(bin Bin) {
-	index := bin.Index()
-	count := bin.Count()
-	if count == 0 {
+	if bin.count == 0 {
 		return
 	}
-	s.AddWithCount(index, count)
+	s.AddWithCount(bin.index, bin.count)
 }
 
 func (s *DenseStore) AddWithCount(index int, count float64) {
