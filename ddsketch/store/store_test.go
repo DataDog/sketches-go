@@ -33,6 +33,7 @@ var (
 		{name: "collapsing_highest_8", newStore: func() Store { return NewCollapsingHighestDenseStore(8) }, transformBins: collapsingHighest(8)},
 		{name: "collapsing_highest_128", newStore: func() Store { return NewCollapsingHighestDenseStore(128) }, transformBins: collapsingHighest(128)},
 		{name: "collapsing_highest_1024", newStore: func() Store { return NewCollapsingHighestDenseStore(1024) }, transformBins: collapsingHighest(1024)},
+		{name: "sparse", newStore: func() Store { return NewSparseStore() }, transformBins: identity},
 	}
 )
 
