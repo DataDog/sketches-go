@@ -34,6 +34,7 @@ var (
 		{name: "collapsing_highest_128", newStore: func() Store { return NewCollapsingHighestDenseStore(128) }, transformBins: collapsingHighest(128)},
 		{name: "collapsing_highest_1024", newStore: func() Store { return NewCollapsingHighestDenseStore(1024) }, transformBins: collapsingHighest(1024)},
 		{name: "sparse", newStore: func() Store { return NewSparseStore() }, transformBins: identity},
+		{name: "buffered_paginated", newStore: func() Store { return NewBufferedPaginatedStore() }, transformBins: identity},
 	}
 )
 
@@ -759,5 +760,73 @@ func TestSerialization(t *testing.T) {
 			// Store does not change after serializing
 			assert.Equal(t, storeHigh.maxNumBins, maxNumBins)
 		}
+	}
+}
+
+func TestBufferedPaginatedCompactionDensity(t *testing.T) {
+	{
+		store := NewBufferedPaginatedStore()
+		for index := 0; index < 4*(1<<store.pageLenLog2); index += 2 {
+			store.Add(index)
+		}
+		store.compact()
+		assert.Zero(t, len(store.pages))
+	}
+	{
+		store := NewBufferedPaginatedStore()
+		for index := 0; index < 4*(1<<store.pageLenLog2); index += 2 {
+			for i := 0; i < 8; i++ {
+				store.Add(index)
+			}
+		}
+		store.compact()
+		assert.Zero(t, len(store.buffer))
+	}
+}
+
+func TestBufferedPaginatedCompactionFew(t *testing.T) {
+	store := NewBufferedPaginatedStore()
+	store.Add(2)
+	store.Add(-7432)
+	store.Add(977)
+	store.compact()
+	assert.Zero(t, len(store.pages))
+}
+
+func TestBufferedPaginatedCompactionOutliers(t *testing.T) {
+	store := NewBufferedPaginatedStore()
+	for index := 0; index < 1<<store.pageLenLog2; index += 1 {
+		for i := 0; i < 2; i++ {
+			store.Add(index)
+		}
+	}
+	for i := 0; i < 4; i++ {
+		store.Add(6377)
+	}
+	assert.Equal(t, 4, len(store.buffer))
+}
+
+func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
+	numTests := 100
+	numMerges := 3
+	maxNumAdds := 1000
+
+	random := rand.New(rand.NewSource(seed))
+
+	for i := 0; i < numTests; i++ {
+		bins := make([]Bin, 0)
+		store := NewBufferedPaginatedStore()
+		for j := 0; j < numMerges; j++ {
+			numValues := random.Intn(maxNumAdds)
+			tmpStore := NewBufferedPaginatedStore()
+			for k := 0; k < numValues; k++ {
+				bin := Bin{index: randomIndex(random), count: randomCount(random)}
+				bins = append(bins, bin)
+				tmpStore.AddBin(bin)
+			}
+			store.MergeWithProto(tmpStore.ToProto())
+		}
+		normalizedBins := normalize(bins)
+		assertEncodeBins(t, store, normalizedBins)
 	}
 }
