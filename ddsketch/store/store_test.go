@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"reflect"
+	"runtime"
 	"sort"
 	"testing"
 
@@ -887,4 +889,62 @@ func BenchmarkNewAndAddWithCountNorm(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestBenchmarkSize(t *testing.T) {
+	for numIndexesLog10 := 0; numIndexesLog10 <= 7; numIndexesLog10++ {
+		numIndexes := int(math.Pow10(numIndexesLog10))
+		for _, testCase := range testCases {
+			n := max(10, 1000/numIndexes)
+			reflectSizeSum := float64(0)
+			memStatSizeSum := float64(0)
+			for i := 0; i < n; i++ {
+				refSize := liveSize()
+				store := testCase.newStore()
+				for j := 0; j < numIndexes; j++ {
+					store.Add(int(rand.NormFloat64() * 200))
+				}
+				reflectSizeSum += float64(size(t, store))
+				memStatSizeSum += float64(liveSize()) - float64(refSize)
+				sink = store
+			}
+			t.Logf("TestBenchmarkSize/1e%d/%s %d %f %f", numIndexesLog10, testCase.name, n, reflectSizeSum/float64(n), memStatSizeSum/float64(n))
+		}
+	}
+}
+
+func liveSize() uint64 {
+	// FIXME: can we make that more robust
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
+}
+
+func size(t *testing.T, store Store) uintptr {
+	if s, ok := store.(*DenseStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.bins)) * reflect.TypeOf(s.bins).Elem().Size()
+		return size
+	} else if s, ok := store.(*CollapsingLowestDenseStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.bins)) * reflect.TypeOf(s.bins).Elem().Size()
+		return size
+	} else if s, ok := store.(*CollapsingHighestDenseStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.bins)) * reflect.TypeOf(s.bins).Elem().Size()
+		return size
+	} else if _, ok := store.(*SparseStore); ok {
+		// FIXME: implement for map
+		return 0
+	} else if s, ok := store.(*BufferedPaginatedStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.buffer)) * reflect.TypeOf(s.buffer).Elem().Size()
+		size += uintptr(cap(s.pages)) * reflect.TypeOf(s.pages).Elem().Size()
+		for _, page := range s.pages {
+			size += uintptr(cap(page)) * reflect.TypeOf(page).Elem().Size()
+		}
+		return size
+	}
+	return 0
 }
