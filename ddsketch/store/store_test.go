@@ -6,6 +6,7 @@
 package store
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -828,5 +829,62 @@ func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
 		}
 		normalizedBins := normalize(bins)
 		assertEncodeBins(t, store, normalizedBins)
+	}
+}
+
+// Benchmarks
+
+var sink Store
+
+func BenchmarkNewAndAddFew(b *testing.B) {
+	values := []int{3, 50, -676, 35688}
+	for _, testCase := range testCases {
+		b.Run(testCase.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				store := testCase.newStore()
+				for _, value := range values {
+					store.Add(value)
+				}
+				sink = store
+			}
+		})
+	}
+}
+
+func BenchmarkNewAndAddNorm(b *testing.B) {
+	for numIndexesLog10 := 0; numIndexesLog10 <= 7; numIndexesLog10++ {
+		numIndexes := int(math.Pow10(numIndexesLog10))
+		b.Run(fmt.Sprintf("1e%d", numIndexesLog10), func(b *testing.B) {
+			for _, testCase := range testCases {
+				b.Run(testCase.name, func(b *testing.B) {
+					for i := 0; i < b.N; i++ {
+						store := testCase.newStore()
+						for j := 0; j < numIndexes; j++ {
+							store.Add(int(rand.NormFloat64() * 200))
+						}
+						sink = store
+					}
+				})
+			}
+		})
+	}
+}
+
+func BenchmarkNewAndAddWithCountNorm(b *testing.B) {
+	for numIndexesLog10 := 0; numIndexesLog10 <= 7; numIndexesLog10++ {
+		numIndexes := int(math.Pow10(numIndexesLog10))
+		b.Run(fmt.Sprintf("1e%d", numIndexesLog10), func(b *testing.B) {
+			for _, testCase := range testCases {
+				b.Run(testCase.name, func(b *testing.B) {
+					for i := 0; i < b.N; i++ {
+						store := testCase.newStore()
+						for j := 0; j < numIndexes; j++ {
+							store.AddWithCount(int(rand.NormFloat64()*200), 0.5)
+						}
+						sink = store
+					}
+				})
+			}
+		})
 	}
 }
