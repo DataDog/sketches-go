@@ -258,3 +258,18 @@ func TestConsistentMerge(t *testing.T) {
 		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
 	}
 }
+
+func BenchmarkProtobuf(b *testing.B) {
+	s, _ := LogCollapsingLowestDenseDDSketch(0.01, 1000)
+	for i := 1; i < 1000; i++ {
+		s.Add(math.Log1p(float64(i)))
+	}
+	pb := s.ToProto()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b, _ := proto.Marshal(pb)
+		var deserialized sketchpb.DDSketch
+		proto.Unmarshal(b, &deserialized)
+	}
+}
