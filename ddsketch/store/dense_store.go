@@ -7,7 +7,6 @@ package store
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"math"
 
@@ -138,14 +137,14 @@ func (s *DenseStore) TotalCount() float64 {
 
 func (s *DenseStore) MinIndex() (int, error) {
 	if s.IsEmpty() {
-		return 0, errors.New("MinIndex of empty store is undefined.")
+		return 0, errUndefinedMinIndex
 	}
 	return s.minIndex, nil
 }
 
 func (s *DenseStore) MaxIndex() (int, error) {
 	if s.IsEmpty() {
-		return 0, errors.New("MaxIndex of empty store is undefined.")
+		return 0, errUndefinedMaxIndex
 	}
 	return s.maxIndex, nil
 }
