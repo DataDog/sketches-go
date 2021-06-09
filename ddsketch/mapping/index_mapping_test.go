@@ -95,8 +95,8 @@ func TestLowerBound(t *testing.T) {
 			lowerBound := mapping.LowerBound(i)
 			previous := mapping.Value(i-1)
 			next := mapping.Value(i)
-			assert.Greater(t, lowerBound, previous)
-			assert.Greater(t, next, lowerBound)
+			assert.GreaterOrEqual(t, lowerBound, previous)
+			assert.GreaterOrEqual(t, next, lowerBound)
 		}
 	}
 }

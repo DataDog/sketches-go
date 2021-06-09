@@ -64,7 +64,7 @@ func (m *LinearlyInterpolatedMapping) Index(value float64) int {
 }
 
 func (m *LinearlyInterpolatedMapping) Value(index int) float64 {
-	return m.approximateInverseLog((float64(index)-m.normalizedIndexOffset)/m.multiplier) * (1 + m.relativeAccuracy)
+	return m.LowerBound(index) * (1 + m.relativeAccuracy)
 }
 
 func (m *LinearlyInterpolatedMapping) LowerBound(index int) float64 {
