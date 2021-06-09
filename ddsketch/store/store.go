@@ -26,6 +26,7 @@ type Store interface {
 	AddBin(bin Bin)
 	AddWithCount(index int, count float64)
 	Bins() <-chan Bin
+	OrderedBins() []Bin
 	Copy() Store
 	IsEmpty() bool
 	MaxIndex() (int, error)
