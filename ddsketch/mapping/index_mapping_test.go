@@ -85,6 +85,22 @@ func TestCubicallyInterpolatedMappingAccuracy(t *testing.T) {
 	}
 }
 
+func TestLowerBound(t *testing.T) {
+	testIndexes := []int{2, 10, 25, 100, 10000}
+	logMapping, _ := NewLogarithmicMapping(0.01)
+	linearMapping, _ := NewLinearlyInterpolatedMapping(0.01)
+	cubicalMapping, _ := NewCubicallyInterpolatedMapping(0.01)
+	for _, mapping := range []IndexMapping{logMapping, linearMapping, cubicalMapping} {
+		for _, i := range testIndexes {
+			lowerBound := mapping.LowerBound(i)
+			previous := mapping.Value(i-1)
+			next := mapping.Value(i)
+			assert.Greater(t, lowerBound, previous)
+			assert.Greater(t, next, lowerBound)
+		}
+	}
+}
+
 func TestSerialization(t *testing.T) {
 	m, _ := NewCubicallyInterpolatedMapping(1e-2)
 	deserializedMapping, err := FromProto(m.ToProto())

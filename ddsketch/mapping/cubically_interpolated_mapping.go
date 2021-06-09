@@ -75,6 +75,10 @@ func (m *CubicallyInterpolatedMapping) Value(index int) float64 {
 	return m.approximateInverseLog((float64(index)-m.normalizedIndexOffset)/m.multiplier) * (1 + m.relativeAccuracy)
 }
 
+func (m *CubicallyInterpolatedMapping) LowerBound(index int) float64 {
+	return m.approximateInverseLog((float64(index)-m.normalizedIndexOffset)/m.multiplier)
+}
+
 // Return an approximation of log(1) + Math.log(x) / Math.log(base(2)).
 func (m *CubicallyInterpolatedMapping) approximateLog(x float64) float64 {
 	bits := math.Float64bits(x)

@@ -69,7 +69,11 @@ func (m *LogarithmicMapping) Index(value float64) int {
 }
 
 func (m *LogarithmicMapping) Value(index int) float64 {
-	return math.Exp(((float64(index) - m.normalizedIndexOffset) / m.multiplier)) * (1 + m.relativeAccuracy)
+	return math.Exp((float64(index) - m.normalizedIndexOffset) / m.multiplier) * (1 + m.relativeAccuracy)
+}
+
+func (m *LogarithmicMapping) LowerBound(index int) float64 {
+	return math.Exp((float64(index) - m.normalizedIndexOffset) / m.multiplier)
 }
 
 func (m *LogarithmicMapping) MinIndexableValue() float64 {
