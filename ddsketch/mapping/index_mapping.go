@@ -19,6 +19,7 @@ type IndexMapping interface {
 	Equals(other IndexMapping) bool
 	Index(value float64) int
 	Value(index int) float64
+	LowerBound(index int) float64
 	RelativeAccuracy() float64
 	MinIndexableValue() float64
 	MaxIndexableValue() float64
