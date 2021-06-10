@@ -35,7 +35,7 @@ func (s *SparseStore) AddWithCount(index int, count float64) {
 }
 
 func (s *SparseStore) Bins() <-chan Bin {
-	orderedBins := s.OrderedBins()
+	orderedBins := s.orderedBins()
 	ch := make(chan Bin)
 	go func() {
 		defer close(ch)
@@ -46,13 +46,19 @@ func (s *SparseStore) Bins() <-chan Bin {
 	return ch
 }
 
-func (s *SparseStore) OrderedBins() []Bin {
+func (s *SparseStore) orderedBins() []Bin {
 	bins := make([]Bin, 0, len(s.counts))
 	for index, count := range s.counts {
 		bins = append(bins, Bin{index: index, count: count})
 	}
 	sort.Slice(bins, func(i, j int) bool { return bins[i].index < bins[j].index })
 	return bins
+}
+
+func (s *SparseStore) ForEach(f func(b Bin)) {
+	for index, count := range s.counts {
+		f(Bin{index: index, count: count})
+	}
 }
 
 func (s *SparseStore) Copy() Store {
@@ -102,7 +108,7 @@ func (s *SparseStore) TotalCount() float64 {
 }
 
 func (s *SparseStore) KeyAtRank(rank float64) int {
-	orderedBins := s.OrderedBins()
+	orderedBins := s.orderedBins()
 	cumulCount := float64(0)
 	for _, bin := range orderedBins {
 		cumulCount += bin.count

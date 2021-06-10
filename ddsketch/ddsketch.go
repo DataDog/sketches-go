@@ -229,7 +229,7 @@ func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore 
 }
 
 func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, newStore store.Store, scaleFactor float64) {
-	for _, bin := range oldStore.OrderedBins() {
+	oldStore.ForEach(func(bin store.Bin) {
 		inLowerBound := oldMapping.LowerBound(bin.Index())*scaleFactor
 		inHigherBound := oldMapping.LowerBound(bin.Index() + 1)*scaleFactor
 		inSize := inHigherBound - inLowerBound
@@ -242,5 +242,5 @@ func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, n
 			proportion := intersectionSize / inSize
 			newStore.AddWithCount(outIndex, proportion*bin.Count())
 		}
-	}
+	})
 }

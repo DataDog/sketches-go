@@ -194,14 +194,12 @@ func (s *DenseStore) Bins() <-chan Bin {
 	return ch
 }
 
-func (s *DenseStore) OrderedBins() []Bin {
-	bins := make([]Bin, 0, len(s.bins))
+func (s *DenseStore) ForEach(f func(b Bin)) {
 	for idx := s.minIndex; idx <= s.maxIndex; idx++ {
 		if s.bins[idx-s.offset] > 0 {
-			bins = append(bins, Bin{index: idx, count: s.bins[idx-s.offset]})
+			f(Bin{index: idx, count: s.bins[idx-s.offset]})
 		}
 	}
-	return bins
 }
 
 func (s *DenseStore) Copy() Store {
