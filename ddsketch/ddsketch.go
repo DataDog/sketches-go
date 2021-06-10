@@ -217,7 +217,10 @@ func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 	}, nil
 }
 
-// ChangeMapping changes the store to a new mapping. It is not the conversion that minimizes the loss in relative
+// ChangeMapping changes the store to a new mapping.
+// it doesn't change s but returns a newly created sketch.
+// positiveStore and negativeStore must be different stores, and be empty when the function is called.
+// It is not the conversion that minimizes the loss in relative
 // accuracy, but it avoids artefacts like empty bins that make the histograms look bad.
 // scaleFactor allows to scale out / in all values. (changing units for eg)
 func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore store.Store, negativeStore store.Store, scaleFactor float64) *DDSketch {
@@ -229,7 +232,7 @@ func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore 
 }
 
 func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, newStore store.Store, scaleFactor float64) {
-	oldStore.ForEach(func(bin store.Bin) {
+	oldStore.ForEach(func(bin store.Bin) (stop bool){
 		inLowerBound := oldMapping.LowerBound(bin.Index())*scaleFactor
 		inHigherBound := oldMapping.LowerBound(bin.Index() + 1)*scaleFactor
 		inSize := inHigherBound - inLowerBound
@@ -242,5 +245,6 @@ func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, n
 			proportion := intersectionSize / inSize
 			newStore.AddWithCount(outIndex, proportion*bin.Count())
 		}
+		return false
 	})
 }

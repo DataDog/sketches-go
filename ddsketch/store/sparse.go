@@ -55,9 +55,11 @@ func (s *SparseStore) orderedBins() []Bin {
 	return bins
 }
 
-func (s *SparseStore) ForEach(f func(b Bin)) {
+func (s *SparseStore) ForEach(f func(b Bin) (stop bool)) {
 	for index, count := range s.counts {
-		f(Bin{index: index, count: count})
+		if f(Bin{index: index, count: count}) {
+			return
+		}
 	}
 }
 
