@@ -181,6 +181,19 @@ func (s *DDSketch) GetMinValue() (float64, error) {
 	}
 }
 
+// GetSum returns the sum of all values in the sketch.
+func (s *DDSketch) GetSum() (sum float64) {
+	s.positiveValueStore.ForEach(func (b store.Bin) bool {
+		sum += s.IndexMapping.Value(b.Index())*b.Count()
+		return false
+	})
+	s.negativeValueStore.ForEach(func (b store.Bin) bool {
+		sum -= s.IndexMapping.Value(b.Index())*b.Count()
+		return false
+	})
+	return sum
+}
+
 // Merges the other sketch into this one. After this operation, this sketch encodes the values that
 // were added to both this and the other sketches.
 func (s *DDSketch) MergeWith(other *DDSketch) error {
