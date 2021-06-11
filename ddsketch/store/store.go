@@ -28,6 +28,7 @@ type Store interface {
 	Bins() <-chan Bin
 	// ForEach applies f to all elements of the store or until f returns true.
 	ForEach(f func(b Bin) (stop bool))
+	OrderedBins() []Bin
 	Copy() Store
 	IsEmpty() bool
 	MaxIndex() (int, error)

@@ -16,16 +16,16 @@ import (
 
 type DDSketch struct {
 	mapping.IndexMapping
-	positiveValueStore store.Store
-	negativeValueStore store.Store
-	zeroCount          float64
+	PositiveValueStore store.Store
+	NegativeValueStore store.Store
+	ZeroCount          float64
 }
 
 func NewDDSketch(indexMapping mapping.IndexMapping, positiveValueStore store.Store, negativeValueStore store.Store) *DDSketch {
 	return &DDSketch{
 		IndexMapping:       indexMapping,
-		positiveValueStore: positiveValueStore,
-		negativeValueStore: negativeValueStore,
+		PositiveValueStore: positiveValueStore,
+		NegativeValueStore: negativeValueStore,
 	}
 }
 
@@ -82,11 +82,11 @@ func (s *DDSketch) AddWithCount(value, count float64) error {
 	}
 
 	if value > s.MinIndexableValue() {
-		s.positiveValueStore.AddWithCount(s.Index(value), count)
+		s.PositiveValueStore.AddWithCount(s.Index(value), count)
 	} else if value < -s.MinIndexableValue() {
-		s.negativeValueStore.AddWithCount(s.Index(-value), count)
+		s.NegativeValueStore.AddWithCount(s.Index(-value), count)
 	} else {
-		s.zeroCount += count
+		s.ZeroCount += count
 	}
 	return nil
 }
@@ -95,8 +95,8 @@ func (s *DDSketch) AddWithCount(value, count float64) error {
 func (s *DDSketch) Copy() *DDSketch {
 	return &DDSketch{
 		IndexMapping:       s.IndexMapping,
-		positiveValueStore: s.positiveValueStore.Copy(),
-		negativeValueStore: s.negativeValueStore.Copy(),
+		PositiveValueStore: s.PositiveValueStore.Copy(),
+		NegativeValueStore: s.NegativeValueStore.Copy(),
 	}
 }
 
@@ -113,13 +113,13 @@ func (s *DDSketch) GetValueAtQuantile(quantile float64) (float64, error) {
 	}
 
 	rank := quantile * (count - 1)
-	negativeValueCount := s.negativeValueStore.TotalCount()
+	negativeValueCount := s.NegativeValueStore.TotalCount()
 	if rank < negativeValueCount {
-		return -s.Value(s.negativeValueStore.KeyAtRank(negativeValueCount - 1 - rank)), nil
-	} else if rank < s.zeroCount+negativeValueCount {
+		return -s.Value(s.NegativeValueStore.KeyAtRank(negativeValueCount - 1 - rank)), nil
+	} else if rank < s.ZeroCount+negativeValueCount {
 		return 0, nil
 	} else {
-		return s.Value(s.positiveValueStore.KeyAtRank(rank - s.zeroCount - negativeValueCount)), nil
+		return s.Value(s.PositiveValueStore.KeyAtRank(rank - s.ZeroCount - negativeValueCount)), nil
 	}
 }
 
@@ -139,24 +139,24 @@ func (s *DDSketch) GetValuesAtQuantiles(quantiles []float64) ([]float64, error) 
 
 // Return the total number of values that have been added to this sketch.
 func (s *DDSketch) GetCount() float64 {
-	return s.zeroCount + s.positiveValueStore.TotalCount() + s.negativeValueStore.TotalCount()
+	return s.ZeroCount + s.PositiveValueStore.TotalCount() + s.NegativeValueStore.TotalCount()
 }
 
 // Return true iff no value has been added to this sketch.
 func (s *DDSketch) IsEmpty() bool {
-	return s.zeroCount == 0 && s.positiveValueStore.IsEmpty() && s.negativeValueStore.IsEmpty()
+	return s.ZeroCount == 0 && s.PositiveValueStore.IsEmpty() && s.NegativeValueStore.IsEmpty()
 }
 
 // Return the maximum value that has been added to this sketch. Return a non-nil error if the sketch
 // is empty.
 func (s *DDSketch) GetMaxValue() (float64, error) {
-	if !s.positiveValueStore.IsEmpty() {
-		maxIndex, _ := s.positiveValueStore.MaxIndex()
+	if !s.PositiveValueStore.IsEmpty() {
+		maxIndex, _ := s.PositiveValueStore.MaxIndex()
 		return s.Value(maxIndex), nil
-	} else if s.zeroCount > 0 {
+	} else if s.ZeroCount > 0 {
 		return 0, nil
 	} else {
-		minIndex, err := s.negativeValueStore.MinIndex()
+		minIndex, err := s.NegativeValueStore.MinIndex()
 		if err != nil {
 			return math.NaN(), err
 		}
@@ -167,13 +167,13 @@ func (s *DDSketch) GetMaxValue() (float64, error) {
 // Return the minimum value that has been added to this sketch. Returns a non-nil error if the sketch
 // is empty.
 func (s *DDSketch) GetMinValue() (float64, error) {
-	if !s.negativeValueStore.IsEmpty() {
-		maxIndex, _ := s.negativeValueStore.MaxIndex()
+	if !s.NegativeValueStore.IsEmpty() {
+		maxIndex, _ := s.NegativeValueStore.MaxIndex()
 		return -s.Value(maxIndex), nil
-	} else if s.zeroCount > 0 {
+	} else if s.ZeroCount > 0 {
 		return 0, nil
 	} else {
-		minIndex, err := s.positiveValueStore.MinIndex()
+		minIndex, err := s.PositiveValueStore.MinIndex()
 		if err != nil {
 			return math.NaN(), err
 		}
@@ -187,9 +187,9 @@ func (s *DDSketch) MergeWith(other *DDSketch) error {
 	if !s.IndexMapping.Equals(other.IndexMapping) {
 		return errors.New("Cannot merge sketches with different index mappings.")
 	}
-	s.positiveValueStore.MergeWith(other.positiveValueStore)
-	s.negativeValueStore.MergeWith(other.negativeValueStore)
-	s.zeroCount += other.zeroCount
+	s.PositiveValueStore.MergeWith(other.PositiveValueStore)
+	s.NegativeValueStore.MergeWith(other.NegativeValueStore)
+	s.ZeroCount += other.ZeroCount
 	return nil
 }
 
@@ -197,9 +197,9 @@ func (s *DDSketch) MergeWith(other *DDSketch) error {
 func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 	return &sketchpb.DDSketch{
 		Mapping:        s.IndexMapping.ToProto(),
-		PositiveValues: s.positiveValueStore.ToProto(),
-		NegativeValues: s.negativeValueStore.ToProto(),
-		ZeroCount:      s.zeroCount,
+		PositiveValues: s.PositiveValueStore.ToProto(),
+		NegativeValues: s.NegativeValueStore.ToProto(),
+		ZeroCount:      s.ZeroCount,
 	}
 }
 
@@ -211,9 +211,9 @@ func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 	}
 	return &DDSketch{
 		IndexMapping:       m,
-		positiveValueStore: store.FromProto(pb.PositiveValues),
-		negativeValueStore: store.FromProto(pb.NegativeValues),
-		zeroCount:          pb.ZeroCount,
+		PositiveValueStore: store.FromProto(pb.PositiveValues),
+		NegativeValueStore: store.FromProto(pb.NegativeValues),
+		ZeroCount:          pb.ZeroCount,
 	}, nil
 }
 
@@ -224,10 +224,10 @@ func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 // accuracy, but it avoids artefacts like empty bins that make the histograms look bad.
 // scaleFactor allows to scale out / in all values. (changing units for eg)
 func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore store.Store, negativeStore store.Store, scaleFactor float64) *DDSketch {
-	changeStoreMapping(s.IndexMapping, newMapping, s.positiveValueStore, positiveStore, scaleFactor)
-	changeStoreMapping(s.IndexMapping, newMapping, s.negativeValueStore, negativeStore, scaleFactor)
+	changeStoreMapping(s.IndexMapping, newMapping, s.PositiveValueStore, positiveStore, scaleFactor)
+	changeStoreMapping(s.IndexMapping, newMapping, s.NegativeValueStore, negativeStore, scaleFactor)
 	newSketch := NewDDSketch(newMapping, positiveStore, negativeStore)
-	newSketch.zeroCount = s.zeroCount
+	newSketch.ZeroCount = s.ZeroCount
 	return newSketch
 }
 
