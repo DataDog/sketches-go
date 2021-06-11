@@ -55,6 +55,14 @@ func (s *SparseStore) orderedBins() []Bin {
 	return bins
 }
 
+func (s *SparseStore) ForEach(f func(b Bin) (stop bool)) {
+	for index, count := range s.counts {
+		if f(Bin{index: index, count: count}) {
+			return
+		}
+	}
+}
+
 func (s *SparseStore) Copy() Store {
 	countsCopy := make(map[int]float64)
 	for index, count := range s.counts {

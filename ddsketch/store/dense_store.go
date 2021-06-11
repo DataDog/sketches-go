@@ -194,6 +194,16 @@ func (s *DenseStore) Bins() <-chan Bin {
 	return ch
 }
 
+func (s *DenseStore) ForEach(f func(b Bin) (stop bool)) {
+	for idx := s.minIndex; idx <= s.maxIndex; idx++ {
+		if s.bins[idx-s.offset] > 0 {
+			if f(Bin{index: idx, count: s.bins[idx-s.offset]}) {
+				return
+			}
+		}
+	}
+}
+
 func (s *DenseStore) Copy() Store {
 	bins := make([]float64, len(s.bins))
 	copy(bins, s.bins)

@@ -6,6 +6,8 @@
 package ddsketch
 
 import (
+	"github.com/DataDog/sketches-go/ddsketch/mapping"
+	"github.com/DataDog/sketches-go/ddsketch/store"
 	"math"
 	"math/rand"
 	"testing"
@@ -256,5 +258,24 @@ func TestConsistentMerge(t *testing.T) {
 		sketch1.MergeWith(sketch2)
 		quantilesAfterMerge, _ := sketch2.GetValuesAtQuantiles(testQuantiles)
 		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
+	}
+}
+
+// TestChangeMapping tests the change of mapping of a DDSketch.
+func TestChangeMapping(t *testing.T) {
+	sketch, _ := LogCollapsingLowestDenseDDSketch(0.01, 2000)
+	generator := dataset.NewNormal(50, 1)
+	testSize := 1000
+	scaleFactor := 0.1
+	for i := 0; i < testSize; i++ {
+		sketch.Add(generator.Generate())
+	}
+	expectedQuantiles, _ := sketch.GetValuesAtQuantiles(testQuantiles)
+	newMapping, _ := mapping.NewLogarithmicMapping(0.007)
+	converted := sketch.ChangeMapping(newMapping, store.NewDenseStore(), store.NewDenseStore(), scaleFactor)
+	quantiles, _ := converted.GetValuesAtQuantiles(testQuantiles)
+	for i, q := range quantiles {
+		e := expectedQuantiles[i]*scaleFactor
+		assert.InDelta(t, e, q, floatingPointAcceptableError+e*(0.01+0.007))
 	}
 }

@@ -216,3 +216,35 @@ func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 		zeroCount:          pb.ZeroCount,
 	}, nil
 }
+
+// ChangeMapping changes the store to a new mapping.
+// it doesn't change s but returns a newly created sketch.
+// positiveStore and negativeStore must be different stores, and be empty when the function is called.
+// It is not the conversion that minimizes the loss in relative
+// accuracy, but it avoids artefacts like empty bins that make the histograms look bad.
+// scaleFactor allows to scale out / in all values. (changing units for eg)
+func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore store.Store, negativeStore store.Store, scaleFactor float64) *DDSketch {
+	changeStoreMapping(s.IndexMapping, newMapping, s.positiveValueStore, positiveStore, scaleFactor)
+	changeStoreMapping(s.IndexMapping, newMapping, s.negativeValueStore, negativeStore, scaleFactor)
+	newSketch := NewDDSketch(newMapping, positiveStore, negativeStore)
+	newSketch.zeroCount = s.zeroCount
+	return newSketch
+}
+
+func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, newStore store.Store, scaleFactor float64) {
+	oldStore.ForEach(func(bin store.Bin) (stop bool){
+		inLowerBound := oldMapping.LowerBound(bin.Index())*scaleFactor
+		inHigherBound := oldMapping.LowerBound(bin.Index() + 1)*scaleFactor
+		inSize := inHigherBound - inLowerBound
+		for outIndex := newMapping.Index(inLowerBound); newMapping.LowerBound(outIndex) < inHigherBound; outIndex++ {
+			outLowerBound := newMapping.LowerBound(outIndex)
+			outHigherBound := newMapping.LowerBound(outIndex+1)
+			lowerIntersectionBound := math.Max(outLowerBound, inLowerBound)
+			higherIntersectionBound := math.Min(outHigherBound, inHigherBound)
+			intersectionSize := higherIntersectionBound - lowerIntersectionBound
+			proportion := intersectionSize / inSize
+			newStore.AddWithCount(outIndex, proportion*bin.Count())
+		}
+		return false
+	})
+}

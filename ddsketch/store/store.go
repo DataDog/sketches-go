@@ -26,6 +26,8 @@ type Store interface {
 	AddBin(bin Bin)
 	AddWithCount(index int, count float64)
 	Bins() <-chan Bin
+	// ForEach applies f to all elements of the store or until f returns true.
+	ForEach(f func(b Bin) (stop bool))
 	Copy() Store
 	IsEmpty() bool
 	MaxIndex() (int, error)
