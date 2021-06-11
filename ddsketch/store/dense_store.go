@@ -238,3 +238,10 @@ func (s *DenseStore) ToProto() *sketchpb.Store {
 		ContiguousBinIndexOffset: int32(s.minIndex),
 	}
 }
+
+func (s *DenseStore) Weight(w float64) {
+	s.count *= w
+	for idx := s.minIndex; idx <= s.maxIndex; idx++ {
+		s.bins[idx-s.offset] *= w
+	}
+}

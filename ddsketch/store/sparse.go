@@ -140,3 +140,9 @@ func (s *SparseStore) ToProto() *sketchpb.Store {
 	}
 	return &sketchpb.Store{BinCounts: binCounts}
 }
+
+func (s *SparseStore) Weight(w float64) {
+	for index := range s.counts {
+		s.counts[index] *= w
+	}
+}

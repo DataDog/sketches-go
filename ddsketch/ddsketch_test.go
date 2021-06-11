@@ -279,3 +279,22 @@ func TestChangeMapping(t *testing.T) {
 		assert.InDelta(t, e, q, floatingPointAcceptableError+e*(0.01+0.007))
 	}
 }
+
+// TestWeight tests the weighting of a sketch by a constant.
+func TestWeight(t *testing.T) {
+	sketch, _ := LogCollapsingLowestDenseDDSketch(0.01, 2000)
+	generator := dataset.NewNormal(50, 1)
+	testSize := 1000
+	for i := 0; i < testSize; i++ {
+		sketch.Add(generator.Generate())
+	}
+	expectedQuantiles, _ := sketch.GetValuesAtQuantiles(testQuantiles)
+	sketch.Weight(3)
+	// no matter the weight constant, the quantiles should stay the same.
+	quantiles, _ := sketch.GetValuesAtQuantiles(testQuantiles)
+	for i, q := range quantiles {
+		e := expectedQuantiles[i]
+		assert.InDelta(t, e, q, floatingPointAcceptableError+e*0.01)
+	}
+	assert.InDelta(t, float64(3*1000), sketch.GetCount(), floatingPointAcceptableError)
+}

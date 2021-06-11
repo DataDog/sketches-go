@@ -248,3 +248,9 @@ func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, n
 		return false
 	})
 }
+
+func (s *DDSketch) Weight(w float64) {
+	s.zeroCount *= w
+	s.positiveValueStore.Weight(w)
+	s.negativeValueStore.Weight(w)
+}

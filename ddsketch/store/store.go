@@ -36,6 +36,7 @@ type Store interface {
 	KeyAtRank(rank float64) int
 	MergeWith(store Store)
 	ToProto() *sketchpb.Store
+	Weight(w float64)
 }
 
 // Returns an instance of DenseStore that contains the data in the provided protobuf representation.
