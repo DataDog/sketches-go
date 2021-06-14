@@ -453,6 +453,56 @@ func (s *BufferedPaginatedStore) Bins() <-chan Bin {
 	return ch
 }
 
+func (s *BufferedPaginatedStore) ForEach(f func(b Bin) (stop bool)) {
+	s.sortBuffer()
+	bufferPos := 0
+
+	// Iterate over the pages and the buffer simultaneously.
+	for pageOffset, page := range s.pages {
+		for lineIndex, count := range page {
+			if count == 0 {
+				continue
+			}
+
+			index := s.index(s.minPageIndex+pageOffset, lineIndex)
+
+			// Iterate over the buffer until index is reached.
+			var indexBufferStartPos int
+			for {
+				indexBufferStartPos = bufferPos
+				if indexBufferStartPos >= len(s.buffer) || s.buffer[indexBufferStartPos] > index {
+					break
+				}
+				bufferPos++
+				for bufferPos < len(s.buffer) && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
+					bufferPos++
+				}
+				if s.buffer[indexBufferStartPos] == index {
+					break
+				}
+				if f(Bin{index: s.buffer[indexBufferStartPos], count: float64(bufferPos - indexBufferStartPos)}) {
+					return
+				}
+			}
+			if f(Bin{index: index, count: count + float64(bufferPos-indexBufferStartPos)}) {
+				return
+			}
+		}
+	}
+
+	// Iterate over the rest of the buffer.
+	for bufferPos < len(s.buffer) {
+		indexBufferStartPos := bufferPos
+		bufferPos++
+		for bufferPos < len(s.buffer) && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
+			bufferPos++
+		}
+		if f(Bin{index: s.buffer[indexBufferStartPos], count: float64(bufferPos - indexBufferStartPos)}) {
+			return
+		}
+	}
+}
+
 func (s *BufferedPaginatedStore) Copy() Store {
 	bufferCopy := make([]int, len(s.buffer))
 	copy(bufferCopy, s.buffer)

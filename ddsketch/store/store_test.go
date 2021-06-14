@@ -328,6 +328,17 @@ func assertEncodeBins(t *testing.T, store Store, normalizedBins []Bin) {
 		assert.Equal(t, normalizedBins[0].index, minIndex, "min index")
 		assert.Equal(t, normalizedBins[len(normalizedBins)-1].index, maxIndex, "max index")
 
+		forEachBins := make([]Bin, 0)
+		store.ForEach(func(bin Bin) bool {
+			forEachBins = append(forEachBins, bin)
+			return false
+		})
+		sort.Slice(forEachBins, func(i, j int) bool { return forEachBins[i].index < forEachBins[j].index })
+		for i, bin := range forEachBins {
+			assert.Equal(t, normalizedBins[i].index, bin.index, "bin index")
+			assert.InEpsilon(t, normalizedBins[i].count, bin.count, epsilon, "bin count")
+		}
+
 		i := 0
 		for bin := range store.Bins() {
 			assert.Equal(t, normalizedBins[i].index, bin.index, "bin index")
