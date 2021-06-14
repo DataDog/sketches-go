@@ -208,7 +208,7 @@ func (s *BufferedPaginatedStore) AddWithCount(index int, count float64) {
 	} else if count == 1 {
 		s.Add(index)
 	} else {
-		s.page(s.pageIndex(index), true)[s.lineIndex(index)] += float64(count)
+		s.page(s.pageIndex(index), true)[s.lineIndex(index)] += count
 	}
 }
 
