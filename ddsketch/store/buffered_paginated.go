@@ -69,14 +69,17 @@ func NewBufferedPaginatedStore() *BufferedPaginatedStore {
 	}
 }
 
+// pageIndex returns the page number the given index falls on.
 func (s *BufferedPaginatedStore) pageIndex(index int) int {
 	return index >> s.pageLenLog2
 }
 
+// lineIndex returns the line number within a page that the given index falls on.
 func (s *BufferedPaginatedStore) lineIndex(index int) int {
 	return index & s.pageLenMask
 }
 
+// index returns the store-level index for a given page number and a line within that page.
 func (s *BufferedPaginatedStore) index(pageIndex, lineIndex int) int {
 	return pageIndex<<s.pageLenLog2 + lineIndex
 }
