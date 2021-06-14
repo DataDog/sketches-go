@@ -25,6 +25,8 @@ type Store interface {
 	Add(index int)
 	AddBin(bin Bin)
 	AddWithCount(index int, count float64)
+	// Bins returns a channel that emits the bins that are encoded in the store.
+	// Note that this leaks a channel and a goroutine if it is not iterated to completion.
 	Bins() <-chan Bin
 	// ForEach applies f to all elements of the store or until f returns true.
 	ForEach(f func(b Bin) (stop bool))
