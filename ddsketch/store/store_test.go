@@ -6,8 +6,11 @@
 package store
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
+	"reflect"
+	"runtime"
 	"sort"
 	"testing"
 
@@ -34,6 +37,7 @@ var (
 		{name: "collapsing_highest_128", newStore: func() Store { return NewCollapsingHighestDenseStore(128) }, transformBins: collapsingHighest(128)},
 		{name: "collapsing_highest_1024", newStore: func() Store { return NewCollapsingHighestDenseStore(1024) }, transformBins: collapsingHighest(1024)},
 		{name: "sparse", newStore: func() Store { return NewSparseStore() }, transformBins: identity},
+		{name: "buffered_paginated", newStore: func() Store { return NewBufferedPaginatedStore() }, transformBins: identity},
 	}
 )
 
@@ -323,6 +327,17 @@ func assertEncodeBins(t *testing.T, store Store, normalizedBins []Bin) {
 		assert.Nil(t, maxErr, "max index err")
 		assert.Equal(t, normalizedBins[0].index, minIndex, "min index")
 		assert.Equal(t, normalizedBins[len(normalizedBins)-1].index, maxIndex, "max index")
+
+		forEachBins := make([]Bin, 0)
+		store.ForEach(func(bin Bin) bool {
+			forEachBins = append(forEachBins, bin)
+			return false
+		})
+		sort.Slice(forEachBins, func(i, j int) bool { return forEachBins[i].index < forEachBins[j].index })
+		for i, bin := range forEachBins {
+			assert.Equal(t, normalizedBins[i].index, bin.index, "bin index")
+			assert.InEpsilon(t, normalizedBins[i].count, bin.count, epsilon, "bin count")
+		}
 
 		i := 0
 		for bin := range store.Bins() {
@@ -760,4 +775,187 @@ func TestSerialization(t *testing.T) {
 			assert.Equal(t, storeHigh.maxNumBins, maxNumBins)
 		}
 	}
+}
+
+func TestBufferedPaginatedCompactionDensity(t *testing.T) {
+	{
+		store := NewBufferedPaginatedStore()
+		for index := 0; index < 4*(1<<store.pageLenLog2); index += 2 {
+			store.Add(index)
+		}
+		store.compact()
+		assert.Zero(t, len(store.pages))
+	}
+	{
+		store := NewBufferedPaginatedStore()
+		for index := 0; index < 4*(1<<store.pageLenLog2); index += 2 {
+			for i := 0; i < 8; i++ {
+				store.Add(index)
+			}
+		}
+		store.compact()
+		assert.Zero(t, len(store.buffer))
+	}
+}
+
+func TestBufferedPaginatedCompactionFew(t *testing.T) {
+	store := NewBufferedPaginatedStore()
+	store.Add(2)
+	store.Add(-7432)
+	store.Add(977)
+	store.compact()
+	assert.Zero(t, len(store.pages))
+}
+
+func TestBufferedPaginatedCompactionOutliers(t *testing.T) {
+	store := NewBufferedPaginatedStore()
+	for index := 0; index < 1<<store.pageLenLog2; index += 1 {
+		for i := 0; i < 2; i++ {
+			store.Add(index)
+		}
+	}
+	for i := 0; i < 4; i++ {
+		store.Add(6377)
+	}
+	assert.Equal(t, 4, len(store.buffer))
+}
+
+func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
+	numTests := 100
+	numMerges := 3
+	maxNumAdds := 1000
+
+	random := rand.New(rand.NewSource(seed))
+
+	for i := 0; i < numTests; i++ {
+		bins := make([]Bin, 0)
+		store := NewBufferedPaginatedStore()
+		for j := 0; j < numMerges; j++ {
+			numValues := random.Intn(maxNumAdds)
+			tmpStore := NewBufferedPaginatedStore()
+			for k := 0; k < numValues; k++ {
+				bin := Bin{index: randomIndex(random), count: randomCount(random)}
+				bins = append(bins, bin)
+				tmpStore.AddBin(bin)
+			}
+			store.MergeWithProto(tmpStore.ToProto())
+		}
+		normalizedBins := normalize(bins)
+		assertEncodeBins(t, store, normalizedBins)
+	}
+}
+
+// Benchmarks
+
+var sink Store
+
+func BenchmarkNewAndAddFew(b *testing.B) {
+	values := []int{3, 50, -676, 35688}
+	for _, testCase := range testCases {
+		b.Run(testCase.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				store := testCase.newStore()
+				for _, value := range values {
+					store.Add(value)
+				}
+				sink = store
+			}
+		})
+	}
+}
+
+func BenchmarkNewAndAddNorm(b *testing.B) {
+	for numIndexesLog10 := 0; numIndexesLog10 <= 7; numIndexesLog10++ {
+		numIndexes := int(math.Pow10(numIndexesLog10))
+		b.Run(fmt.Sprintf("1e%d", numIndexesLog10), func(b *testing.B) {
+			for _, testCase := range testCases {
+				b.Run(testCase.name, func(b *testing.B) {
+					for i := 0; i < b.N; i++ {
+						store := testCase.newStore()
+						for j := 0; j < numIndexes; j++ {
+							store.Add(int(rand.NormFloat64() * 200))
+						}
+						sink = store
+					}
+				})
+			}
+		})
+	}
+}
+
+func BenchmarkNewAndAddWithCountNorm(b *testing.B) {
+	for numIndexesLog10 := 0; numIndexesLog10 <= 7; numIndexesLog10++ {
+		numIndexes := int(math.Pow10(numIndexesLog10))
+		b.Run(fmt.Sprintf("1e%d", numIndexesLog10), func(b *testing.B) {
+			for _, testCase := range testCases {
+				b.Run(testCase.name, func(b *testing.B) {
+					for i := 0; i < b.N; i++ {
+						store := testCase.newStore()
+						for j := 0; j < numIndexes; j++ {
+							store.AddWithCount(int(rand.NormFloat64()*200), 0.5)
+						}
+						sink = store
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestBenchmarkSize(t *testing.T) {
+	for numIndexesLog10 := 0; numIndexesLog10 <= 7; numIndexesLog10++ {
+		numIndexes := int(math.Pow10(numIndexesLog10))
+		for _, testCase := range testCases {
+			n := max(10, 1000/numIndexes)
+			reflectSizeSum := float64(0)
+			memStatSizeSum := float64(0)
+			for i := 0; i < n; i++ {
+				refSize := liveSize()
+				store := testCase.newStore()
+				for j := 0; j < numIndexes; j++ {
+					store.Add(int(rand.NormFloat64() * 200))
+				}
+				reflectSizeSum += float64(size(t, store))
+				memStatSizeSum += float64(liveSize()) - float64(refSize)
+				sink = store
+			}
+			t.Logf("TestBenchmarkSize/1e%d/%s %d %f %f", numIndexesLog10, testCase.name, n, reflectSizeSum/float64(n), memStatSizeSum/float64(n))
+		}
+	}
+}
+
+func liveSize() uint64 {
+	// FIXME: can we make that more robust
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.HeapAlloc
+}
+
+func size(t *testing.T, store Store) uintptr {
+	if s, ok := store.(*DenseStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.bins)) * reflect.TypeOf(s.bins).Elem().Size()
+		return size
+	} else if s, ok := store.(*CollapsingLowestDenseStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.bins)) * reflect.TypeOf(s.bins).Elem().Size()
+		return size
+	} else if s, ok := store.(*CollapsingHighestDenseStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.bins)) * reflect.TypeOf(s.bins).Elem().Size()
+		return size
+	} else if _, ok := store.(*SparseStore); ok {
+		// FIXME: implement for map
+		return 0
+	} else if s, ok := store.(*BufferedPaginatedStore); ok {
+		size := reflect.TypeOf(s).Elem().Size()
+		size += uintptr(cap(s.buffer)) * reflect.TypeOf(s.buffer).Elem().Size()
+		size += uintptr(cap(s.pages)) * reflect.TypeOf(s.pages).Elem().Size()
+		for _, page := range s.pages {
+			size += uintptr(cap(page)) * reflect.TypeOf(page).Elem().Size()
+		}
+		return size
+	}
+	return 0
 }
