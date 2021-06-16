@@ -512,8 +512,9 @@ func (s *BufferedPaginatedStore) Copy() Store {
 		buffer:                     bufferCopy,
 		bufferCompactionTriggerLen: s.bufferCompactionTriggerLen,
 		pages:                      pagesCopy,
-		pageLenLog2:                s.pageLenLog2,
 		minPageIndex:               s.minPageIndex,
+		pageLenLog2:                s.pageLenLog2,
+		pageLenMask:                s.pageLenMask,
 	}
 }
 
