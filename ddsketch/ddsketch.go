@@ -97,6 +97,7 @@ func (s *DDSketch) Copy() *DDSketch {
 		IndexMapping:       s.IndexMapping,
 		positiveValueStore: s.positiveValueStore.Copy(),
 		negativeValueStore: s.negativeValueStore.Copy(),
+		zeroCount:          s.zeroCount,
 	}
 }
 
