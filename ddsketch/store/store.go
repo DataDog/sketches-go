@@ -39,6 +39,12 @@ type Store interface {
 	// ForEach applies f to all elements of the store or until f returns true.
 	ForEach(f func(b Bin) (stop bool))
 	Copy() Store
+	// Clear empties the store while allowing reusing already allocated memory.
+	// In some situations, it may be advantageous to clear and reuse a store
+	// rather than instantiating a new one. Keeping reusing the same store again
+	// and again on varying input data distributions may however ultimately make
+	// the store overly large and may waste memory space.
+	Clear()
 	IsEmpty() bool
 	MaxIndex() (int, error)
 	MinIndex() (int, error)

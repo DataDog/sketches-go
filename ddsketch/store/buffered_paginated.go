@@ -91,12 +91,11 @@ func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float6
 
 	if pageIndex >= s.minPageIndex && pageIndex < s.minPageIndex+len(s.pages) {
 		// No need to extend s.pages.
-		page := s.pages[pageIndex-s.minPageIndex]
-		if ensureExists && page == nil {
-			page = make([]float64, pageLen)
-			s.pages[pageIndex-s.minPageIndex] = page
+		page := &s.pages[pageIndex-s.minPageIndex]
+		if ensureExists && len(*page) == 0 {
+			*page = append(*page, make([]float64, pageLen)...)
 		}
-		return page
+		return *page
 	}
 
 	if !ensureExists {
@@ -106,30 +105,30 @@ func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float6
 	if pageIndex < s.minPageIndex {
 		if s.minPageIndex == maxInt {
 			if len(s.pages) == 0 {
-				s.pages = make([][]float64, s.newPagesLen(1))
+				s.pages = append(s.pages, make([][]float64, s.newPagesLen(1))...)
 			}
 			s.minPageIndex = pageIndex - len(s.pages)/2
 		} else {
 			// Extends s.pages left.
-			newPages := make([][]float64, s.newPagesLen(s.minPageIndex-pageIndex+len(s.pages)))
-			shift := len(newPages) - len(s.pages)
-			copy(newPages[shift:], s.pages)
-			s.pages = newPages
-			s.minPageIndex -= shift
+			newLen := s.newPagesLen(s.minPageIndex - pageIndex + 1 + len(s.pages))
+			addedLen := newLen - len(s.pages)
+			s.pages = append(s.pages, make([][]float64, addedLen)...)
+			copy(s.pages[addedLen:], s.pages)
+			for i := 0; i < addedLen; i++ {
+				s.pages[i] = nil
+			}
+			s.minPageIndex -= addedLen
 		}
 	} else {
 		// Extends s.pages right.
-		newPages := make([][]float64, s.newPagesLen(pageIndex-s.minPageIndex+1))
-		copy(newPages, s.pages)
-		s.pages = newPages
+		s.pages = append(s.pages, make([][]float64, s.newPagesLen(pageIndex-s.minPageIndex+1)-len(s.pages))...)
 	}
 
-	page := s.pages[pageIndex-s.minPageIndex]
-	if page == nil {
-		page = make([]float64, pageLen)
-		s.pages[pageIndex-s.minPageIndex] = page
+	page := &s.pages[pageIndex-s.minPageIndex]
+	if len(*page) == 0 {
+		*page = append(*page, make([]float64, pageLen)...)
 	}
-	return page
+	return *page
 }
 
 func (s *BufferedPaginatedStore) newPagesLen(required int) int {
@@ -163,7 +162,7 @@ func (s *BufferedPaginatedStore) compact() {
 		// of s.pages.
 		ensureExists := (bufferPageEnd-bufferPageStart)*bufferEntrySize >= pageLen*float64size
 		newPage := s.page(pageIndex, ensureExists)
-		if newPage != nil {
+		if len(newPage) > 0 {
 			for _, index := range s.buffer[bufferPageStart:bufferPageEnd] {
 				newPage[s.lineIndex(index)]++
 			}
@@ -184,7 +183,7 @@ func (s *BufferedPaginatedStore) Add(index int) {
 	pageIndex := s.pageIndex(index)
 	if pageIndex >= s.minPageIndex && pageIndex < s.minPageIndex+len(s.pages) {
 		page := s.pages[pageIndex-s.minPageIndex]
-		if page != nil {
+		if len(page) > 0 {
 			page[s.lineIndex(index)]++
 			return
 		}
@@ -251,7 +250,7 @@ func (s *BufferedPaginatedStore) MinIndex() (int, error) {
 	// Iterate over the pages.
 	for pageIndex := s.minPageIndex; pageIndex < s.minPageIndex+len(s.pages) && (isEmpty || pageIndex <= s.pageIndex(minIndex)); pageIndex++ {
 		page := s.pages[pageIndex-s.minPageIndex]
-		if page == nil {
+		if len(page) == 0 {
 			continue
 		}
 
@@ -291,7 +290,7 @@ func (s *BufferedPaginatedStore) MaxIndex() (int, error) {
 	// Iterate over the pages.
 	for pageIndex := s.minPageIndex + len(s.pages) - 1; pageIndex >= s.minPageIndex && (isEmpty || pageIndex >= s.pageIndex(maxIndex)); pageIndex-- {
 		page := s.pages[pageIndex-s.minPageIndex]
-		if page == nil {
+		if len(page) == 0 {
 			continue
 		}
 
@@ -518,18 +517,10 @@ func (s *BufferedPaginatedStore) Copy() Store {
 	}
 }
 
-// Clear empties the store while allowing reusing already allocated memory. In
-// some situations, it may be advantageous to clear and reuse a store rather
-// than instantiating a new one. Keeping reusing the same store again and again
-// on varying input data distributions may however ultimately make the store
-// overly large and may waste memory space (because of empty pages or a buffer
-// with large capacity).
 func (s *BufferedPaginatedStore) Clear() {
 	s.buffer = s.buffer[:0]
-	for _, page := range s.pages {
-		for i := 0; i < len(page); i++ {
-			page[i] = 0
-		}
+	for i := range s.pages {
+		s.pages[i] = s.pages[i][:0]
 	}
 	s.minPageIndex = maxInt
 }
@@ -567,3 +558,5 @@ func (s *BufferedPaginatedStore) Reweight(w float64) error {
 	}
 	return nil
 }
+
+var _ Store = (*BufferedPaginatedStore)(nil)
