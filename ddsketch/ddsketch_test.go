@@ -321,3 +321,12 @@ func TestReweight(t *testing.T) {
 		assert.InDelta(t, float64(3*testSize), s.GetCount(), floatingPointAcceptableError)
 	}
 }
+
+func TestClear(t *testing.T) {
+	sketch, _ := LogUnboundedDenseDDSketch(0.01)
+	sketch.AddWithCount(0, 1.2)
+	sketch.Add(3.4)
+	sketch.AddWithCount(-5.6, 7.8)
+	sketch.Clear()
+	assert.Zero(t, sketch.GetCount())
+}
