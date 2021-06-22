@@ -40,14 +40,26 @@ type Store interface {
 	ToProto() *sketchpb.Store
 }
 
-// Returns an instance of DenseStore that contains the data in the provided protobuf representation.
+// FromProto returns an instance of DenseStore that contains the data in the provided protobuf representation.
 func FromProto(pb *sketchpb.Store) *DenseStore {
 	store := NewDenseStore()
+	populateStoreFromProto(pb, store)
+	return store
+}
+
+// SparseStoreFromProto returns an instance of SparseStore that contains
+// the data in the provided protobuf representation.
+func SparseStoreFromProto(pb *sketchpb.Store) *SparseStore {
+	store := NewSparseStore()
+	populateStoreFromProto(pb, store)
+	return store
+}
+
+func populateStoreFromProto(pb *sketchpb.Store, emptyStore Store) {
 	for idx, count := range pb.BinCounts {
-		store.AddWithCount(int(idx), count)
+		emptyStore.AddWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
-		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+		emptyStore.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
-	return store
 }

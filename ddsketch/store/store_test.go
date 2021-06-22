@@ -749,7 +749,7 @@ func AssertDenseStoresEqual(t *testing.T, store DenseStore, other DenseStore) {
 	)
 }
 
-func TestSerialization(t *testing.T) {
+func TestDenseStoreSerialization(t *testing.T) {
 	nTests := 100
 	// Store indices are limited to the int32 range
 	var values []int32
@@ -774,6 +774,22 @@ func TestSerialization(t *testing.T) {
 			// Store does not change after serializing
 			assert.Equal(t, storeHigh.maxNumBins, maxNumBins)
 		}
+	}
+}
+
+func TestSparseStoreSerialization(t *testing.T) {
+	nTests := 100
+	// Store indices are limited to the int32 range
+	var values []int32
+	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+	for i := 0; i < nTests; i++ {
+		f.Fuzz(&values)
+		store := NewSparseStore()
+		for _, v := range values {
+			store.Add(int(v))
+		}
+		deserializedStore := SparseStoreFromProto(store.ToProto())
+		assert.Equal(t, store, deserializedStore)
 	}
 }
 
