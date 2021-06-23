@@ -793,6 +793,24 @@ func TestSparseStoreSerialization(t *testing.T) {
 	}
 }
 
+func TestBufferPaginatedStoreSerialization(t *testing.T) {
+	nTests := 100
+	// Store indices are limited to the int32 range
+	var values []int32
+	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+	for i := 0; i < nTests; i++ {
+		f.Fuzz(&values)
+		store := NewBufferedPaginatedStore()
+		for _, v := range values {
+			store.Add(int(v))
+		}
+		deserializedStore := BufferPaginatedStoreFromProto(store.ToProto())
+		sort.Ints(store.buffer)
+		sort.Ints(deserializedStore.buffer)
+		assert.Equal(t, store, deserializedStore)
+	}
+}
+
 func TestBufferedPaginatedCompactionDensity(t *testing.T) {
 	{
 		store := NewBufferedPaginatedStore()
