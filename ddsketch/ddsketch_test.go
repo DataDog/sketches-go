@@ -48,13 +48,24 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
 
-	// Serialize/deserialize the sketch
+	// for each store type, serialize / deserialize the sketch, and check that new sketch is still accurate
+	// Test Dense store
+	assertDeserializedSketchAccurate(t, sketch, store.Dense, data, alpha)
+
+	// Test Sparse store
+	assertDeserializedSketchAccurate(t, sketch, store.Sparse, data, alpha)
+
+	// TODO test other stores types
+}
+
+// makes sure that if we serialize and deserialize a sketch, it will still be accurate
+func assertDeserializedSketchAccurate(t *testing.T, sketch *DDSketch, storeType store.Type, data *dataset.Dataset, alpha float64) {
 	bytes, err := proto.Marshal(sketch.ToProto())
 	assert.Nil(t, err)
 	var sketchPb sketchpb.DDSketch
 	err = proto.Unmarshal(bytes, &sketchPb)
 	assert.Nil(t, err)
-	deserializedSketch, err := FromProto(&sketchPb)
+	deserializedSketch, err := FromProtoWithStoreType(&sketchPb, storeType)
 	assert.Nil(t, err)
 	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }

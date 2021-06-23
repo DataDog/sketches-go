@@ -11,6 +11,13 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
+type Type int
+const (
+	Dense Type = iota
+	Sparse
+	BufferedPaginated
+)
+
 const (
 	maxInt = int(^uint(0) >> 1)
 	minInt = ^maxInt
@@ -43,14 +50,6 @@ type Store interface {
 // FromProto returns an instance of DenseStore that contains the data in the provided protobuf representation.
 func FromProto(pb *sketchpb.Store) *DenseStore {
 	store := NewDenseStore()
-	populateStoreFromProto(pb, store)
-	return store
-}
-
-// SparseStoreFromProto returns an instance of SparseStore that contains
-// the data in the provided protobuf representation.
-func SparseStoreFromProto(pb *sketchpb.Store) *SparseStore {
-	store := NewSparseStore()
 	populateStoreFromProto(pb, store)
 	return store
 }

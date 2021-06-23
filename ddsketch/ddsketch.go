@@ -7,6 +7,7 @@ package ddsketch
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/DataDog/sketches-go/ddsketch/mapping"
@@ -218,16 +219,34 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 	}
 }
 
-// FromProto builds a new instance of DDSketch based on the provided protobuf representation.
+// FromProto builds a new instance of DDSketch based on the provided protobuf representation, using a Dense store.
 func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
+	return FromProtoWithStoreType(pb, store.Dense)
+}
+
+// FromProtoWithStoreType builds a new instance of DDSketch based on the provided protobuf representation, with the provided store type
+func FromProtoWithStoreType(pb *sketchpb.DDSketch, storeType store.Type) (*DDSketch, error) {
+	switch storeType {
+	case store.Dense:
+		return FromProtoWithStores(pb, store.FromProto(pb.PositiveValues), store.FromProto(pb.NegativeValues))
+	case store.Sparse:
+		return FromProtoWithStores(pb, store.SparseStoreFromProto(pb.PositiveValues), store.SparseStoreFromProto(pb.NegativeValues))
+	}
+	return nil, fmt.Errorf("invalid store type: %d; please see store.Type for valid values", storeType)
+}
+
+// FromProtoWithStores builds a new instance of DDSketch based on the provided protobuf representation, with the given
+// positive and negative value stores. This is useful when you want to re-use stores.
+// Note: the stores are not populated in this function.
+func FromProtoWithStores(pb *sketchpb.DDSketch, positiveValueStore store.Store, negativeValueStore store.Store) (*DDSketch, error) {
 	m, err := mapping.FromProto(pb.Mapping)
 	if err != nil {
 		return nil, err
 	}
 	return &DDSketch{
 		IndexMapping:       m,
-		positiveValueStore: store.FromProto(pb.PositiveValues),
-		negativeValueStore: store.FromProto(pb.NegativeValues),
+		positiveValueStore: positiveValueStore,
+		negativeValueStore: negativeValueStore,
 		zeroCount:          pb.ZeroCount,
 	}, nil
 }
