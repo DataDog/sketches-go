@@ -231,6 +231,8 @@ func FromProtoWithStoreType(pb *sketchpb.DDSketch, storeType store.Type) (*DDSke
 		return FromProtoWithStores(pb, store.FromProto(pb.PositiveValues), store.FromProto(pb.NegativeValues))
 	case store.Sparse:
 		return FromProtoWithStores(pb, store.SparseStoreFromProto(pb.PositiveValues), store.SparseStoreFromProto(pb.NegativeValues))
+	case store.BufferedPaginated:
+		return FromProtoWithStores(pb, store.BufferPaginatedStoreFromProto(pb.PositiveValues), store.BufferPaginatedStoreFromProto(pb.NegativeValues))
 	}
 	return nil, fmt.Errorf("invalid store type: %d; please see store.Type for valid values", storeType)
 }
@@ -266,13 +268,13 @@ func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore 
 }
 
 func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, newStore store.Store, scaleFactor float64) {
-	oldStore.ForEach(func(bin store.Bin) (stop bool){
-		inLowerBound := oldMapping.LowerBound(bin.Index())*scaleFactor
-		inHigherBound := oldMapping.LowerBound(bin.Index() + 1)*scaleFactor
+	oldStore.ForEach(func(bin store.Bin) (stop bool) {
+		inLowerBound := oldMapping.LowerBound(bin.Index()) * scaleFactor
+		inHigherBound := oldMapping.LowerBound(bin.Index()+1) * scaleFactor
 		inSize := inHigherBound - inLowerBound
 		for outIndex := newMapping.Index(inLowerBound); newMapping.LowerBound(outIndex) < inHigherBound; outIndex++ {
 			outLowerBound := newMapping.LowerBound(outIndex)
-			outHigherBound := newMapping.LowerBound(outIndex+1)
+			outHigherBound := newMapping.LowerBound(outIndex + 1)
 			lowerIntersectionBound := math.Max(outLowerBound, inLowerBound)
 			higherIntersectionBound := math.Min(outHigherBound, inHigherBound)
 			intersectionSize := higherIntersectionBound - lowerIntersectionBound

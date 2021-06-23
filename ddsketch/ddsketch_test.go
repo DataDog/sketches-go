@@ -48,14 +48,10 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	}
 	AssertSketchesAccurate(t, data, sketch, alpha)
 
-	// for each store type, serialize / deserialize the sketch, and check that new sketch is still accurate
-	// Test Dense store
+	// for each store type, serialize / deserialize the sketch into a sketch with that store type, and check that new sketch is still accurate
 	assertDeserializedSketchAccurate(t, sketch, store.Dense, data, alpha)
-
-	// Test Sparse store
 	assertDeserializedSketchAccurate(t, sketch, store.Sparse, data, alpha)
-
-	// TODO test other stores types
+	assertDeserializedSketchAccurate(t, sketch, store.BufferedPaginated, data, alpha)
 }
 
 // makes sure that if we serialize and deserialize a sketch, it will still be accurate
@@ -286,7 +282,7 @@ func TestChangeMapping(t *testing.T) {
 	converted := sketch.ChangeMapping(newMapping, store.NewDenseStore(), store.NewDenseStore(), scaleFactor)
 	quantiles, _ := converted.GetValuesAtQuantiles(testQuantiles)
 	for i, q := range quantiles {
-		e := expectedQuantiles[i]*scaleFactor
+		e := expectedQuantiles[i] * scaleFactor
 		assert.InDelta(t, e, q, floatingPointAcceptableError+e*(0.01+0.007))
 	}
 }

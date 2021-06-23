@@ -12,6 +12,7 @@ import (
 )
 
 type Type int
+
 const (
 	Dense Type = iota
 	Sparse
