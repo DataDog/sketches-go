@@ -788,7 +788,8 @@ func TestSparseStoreSerialization(t *testing.T) {
 		for _, v := range values {
 			store.Add(int(v))
 		}
-		deserializedStore := SparseStoreFromProto(store.ToProto())
+		deserializedStore := NewSparseStore()
+		PopulateStoreFromProto(deserializedStore, store.ToProto())
 		assert.Equal(t, store, deserializedStore)
 	}
 }
@@ -804,7 +805,8 @@ func TestBufferPaginatedStoreSerialization(t *testing.T) {
 		for _, v := range values {
 			store.Add(int(v))
 		}
-		deserializedStore := BufferPaginatedStoreFromProto(store.ToProto())
+		deserializedStore := NewBufferedPaginatedStore()
+		PopulateStoreFromProto(deserializedStore, store.ToProto())
 		sort.Ints(store.buffer)
 		sort.Ints(deserializedStore.buffer)
 		assert.Equal(t, store, deserializedStore)

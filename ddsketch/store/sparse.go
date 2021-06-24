@@ -140,11 +140,3 @@ func (s *SparseStore) ToProto() *sketchpb.Store {
 	}
 	return &sketchpb.Store{BinCounts: binCounts}
 }
-
-// SparseStoreFromProto returns an instance of SparseStore that contains
-// the data in the provided protobuf representation.
-func SparseStoreFromProto(pb *sketchpb.Store) *SparseStore {
-	store := NewSparseStore()
-	populateStoreFromProto(pb, store)
-	return store
-}

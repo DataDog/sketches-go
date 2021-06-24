@@ -7,7 +7,6 @@ package ddsketch
 
 import (
 	"errors"
-	"fmt"
 	"math"
 
 	"github.com/DataDog/sketches-go/ddsketch/mapping"
@@ -221,20 +220,15 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 
 // FromProto builds a new instance of DDSketch based on the provided protobuf representation, using a Dense store.
 func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
-	return FromProtoWithStoreType(pb, store.Dense)
+	return FromProtoWithStoreProvider(pb, store.DenseStoreConstructor)
 }
 
-// FromProtoWithStoreType builds a new instance of DDSketch based on the provided protobuf representation, with the provided store type
-func FromProtoWithStoreType(pb *sketchpb.DDSketch, storeType store.Type) (*DDSketch, error) {
-	switch storeType {
-	case store.Dense:
-		return FromProtoWithStores(pb, store.FromProto(pb.PositiveValues), store.FromProto(pb.NegativeValues))
-	case store.Sparse:
-		return FromProtoWithStores(pb, store.SparseStoreFromProto(pb.PositiveValues), store.SparseStoreFromProto(pb.NegativeValues))
-	case store.BufferedPaginated:
-		return FromProtoWithStores(pb, store.BufferPaginatedStoreFromProto(pb.PositiveValues), store.BufferPaginatedStoreFromProto(pb.NegativeValues))
-	}
-	return nil, fmt.Errorf("invalid store type: %d; please see store.Type for valid values", storeType)
+func FromProtoWithStoreProvider(pb *sketchpb.DDSketch, storeProvider store.Provider) (*DDSketch, error) {
+	positiveValueStore := storeProvider()
+	store.PopulateStoreFromProto(positiveValueStore, pb.PositiveValues)
+	negativeValueStore := storeProvider()
+	store.PopulateStoreFromProto(negativeValueStore, pb.NegativeValues)
+	return FromProtoWithStores(pb, positiveValueStore, negativeValueStore)
 }
 
 // FromProtoWithStores builds a new instance of DDSketch based on the provided protobuf representation, with the given

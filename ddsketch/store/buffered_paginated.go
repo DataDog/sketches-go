@@ -546,11 +546,3 @@ func (s *BufferedPaginatedStore) ToProto() *sketchpb.Store {
 		BinCounts: binCounts,
 	}
 }
-
-// BufferPaginatedStoreFromProto returns an instance of BufferPaginatedStore that contains
-// the data in the provided protobuf representation.
-func BufferPaginatedStoreFromProto(pb *sketchpb.Store) *BufferedPaginatedStore {
-	store := NewBufferedPaginatedStore()
-	populateStoreFromProto(pb, store)
-	return store
-}

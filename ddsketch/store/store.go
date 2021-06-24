@@ -11,12 +11,12 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
-type Type int
+type Provider func() Store
 
-const (
-	Dense Type = iota
-	Sparse
-	BufferedPaginated
+var (
+	DenseStoreConstructor = Provider(func() Store { return NewDenseStore() })
+	BufferedPaginatedStoreConstructor = Provider(func() Store { return NewBufferedPaginatedStore() })
+	SparseStoreConstructor = Provider(func() Store { return NewSparseStore() })
 )
 
 const (
@@ -51,11 +51,11 @@ type Store interface {
 // FromProto returns an instance of DenseStore that contains the data in the provided protobuf representation.
 func FromProto(pb *sketchpb.Store) *DenseStore {
 	store := NewDenseStore()
-	populateStoreFromProto(pb, store)
+	PopulateStoreFromProto(store, pb)
 	return store
 }
 
-func populateStoreFromProto(pb *sketchpb.Store, emptyStore Store) {
+func PopulateStoreFromProto(emptyStore Store, pb *sketchpb.Store) {
 	for idx, count := range pb.BinCounts {
 		emptyStore.AddWithCount(int(idx), count)
 	}

@@ -49,19 +49,19 @@ func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
 	AssertSketchesAccurate(t, data, sketch, alpha)
 
 	// for each store type, serialize / deserialize the sketch into a sketch with that store type, and check that new sketch is still accurate
-	assertDeserializedSketchAccurate(t, sketch, store.Dense, data, alpha)
-	assertDeserializedSketchAccurate(t, sketch, store.Sparse, data, alpha)
-	assertDeserializedSketchAccurate(t, sketch, store.BufferedPaginated, data, alpha)
+	assertDeserializedSketchAccurate(t, sketch, store.DenseStoreConstructor, data, alpha)
+	assertDeserializedSketchAccurate(t, sketch, store.BufferedPaginatedStoreConstructor, data, alpha)
+	assertDeserializedSketchAccurate(t, sketch, store.SparseStoreConstructor, data, alpha)
 }
 
 // makes sure that if we serialize and deserialize a sketch, it will still be accurate
-func assertDeserializedSketchAccurate(t *testing.T, sketch *DDSketch, storeType store.Type, data *dataset.Dataset, alpha float64) {
+func assertDeserializedSketchAccurate(t *testing.T, sketch *DDSketch, storeProvider store.Provider, data *dataset.Dataset, alpha float64) {
 	bytes, err := proto.Marshal(sketch.ToProto())
 	assert.Nil(t, err)
 	var sketchPb sketchpb.DDSketch
 	err = proto.Unmarshal(bytes, &sketchPb)
 	assert.Nil(t, err)
-	deserializedSketch, err := FromProtoWithStoreType(&sketchPb, storeType)
+	deserializedSketch, err := FromProtoWithStoreProvider(&sketchPb, storeProvider)
 	assert.Nil(t, err)
 	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
 }
