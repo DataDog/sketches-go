@@ -181,8 +181,9 @@ func (s *DDSketch) GetMinValue() (float64, error) {
 	}
 }
 
-// GetSum returns the sum of all values in the sketch.
-// The accuracy of the result is: relativeAccuracy*(sum of positive values - sum of negative values)
+// GetSum returns an approximation of the sum of the values that have been added to the sketch. If the
+// values that have been added to the sketch all have the same sign, the approximation error has
+// the relative accuracy guarantees of the mapping used for this sketch.
 func (s *DDSketch) GetSum() (sum float64) {
 	s.positiveValueStore.ForEach(func (b store.Bin) bool {
 		sum += s.IndexMapping.Value(b.Index())*b.Count()
