@@ -14,9 +14,9 @@ import (
 type Provider func() Store
 
 var (
-	DenseStoreConstructor = Provider(func() Store { return NewDenseStore() })
+	DenseStoreConstructor             = Provider(func() Store { return NewDenseStore() })
 	BufferedPaginatedStoreConstructor = Provider(func() Store { return NewBufferedPaginatedStore() })
-	SparseStoreConstructor = Provider(func() Store { return NewSparseStore() })
+	SparseStoreConstructor            = Provider(func() Store { return NewSparseStore() })
 )
 
 const (
