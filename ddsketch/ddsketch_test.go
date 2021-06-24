@@ -280,21 +280,28 @@ func TestChangeMapping(t *testing.T) {
 	}
 }
 
-// TestWeight tests the weighting of a sketch by a constant.
-func TestWeight(t *testing.T) {
-	sketch, _ := LogCollapsingLowestDenseDDSketch(0.01, 2000)
-	generator := dataset.NewNormal(50, 1)
+// TestReweight tests the reweighting of a sketch by a constant.
+func TestReweight(t *testing.T) {
+	m, _ := mapping.NewLogarithmicMapping(0.01)
+	sketches := []*DDSketch{
+		NewDDSketch(m, store.NewDenseStore(), store.NewDenseStore()),
+		NewDDSketch(m, store.NewSparseStore(), store.NewSparseStore()),
+		NewDDSketch(m, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore()),
+	}
 	testSize := 1000
-	for i := 0; i < testSize; i++ {
-		sketch.Add(generator.Generate())
+	for _, s := range sketches {
+		generator := dataset.NewNormal(50, 1)
+		for i := 0; i < testSize; i++ {
+			s.Add(generator.Generate())
+		}
+		expectedQuantiles, _ := s.GetValuesAtQuantiles(testQuantiles)
+		s.Reweight(3)
+		// no matter the weight constant, the quantiles should stay the same.
+		quantiles, _ := s.GetValuesAtQuantiles(testQuantiles)
+		for i, q := range quantiles {
+			e := expectedQuantiles[i]
+			assert.InDelta(t, e, q, floatingPointAcceptableError+e*0.01)
+		}
+		assert.InDelta(t, float64(3*testSize), s.GetCount(), floatingPointAcceptableError)
 	}
-	expectedQuantiles, _ := sketch.GetValuesAtQuantiles(testQuantiles)
-	sketch.Weight(3)
-	// no matter the weight constant, the quantiles should stay the same.
-	quantiles, _ := sketch.GetValuesAtQuantiles(testQuantiles)
-	for i, q := range quantiles {
-		e := expectedQuantiles[i]
-		assert.InDelta(t, e, q, floatingPointAcceptableError+e*0.01)
-	}
-	assert.InDelta(t, float64(3*1000), sketch.GetCount(), floatingPointAcceptableError)
 }

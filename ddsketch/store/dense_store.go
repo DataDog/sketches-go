@@ -7,6 +7,7 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 
@@ -239,9 +240,16 @@ func (s *DenseStore) ToProto() *sketchpb.Store {
 	}
 }
 
-func (s *DenseStore) Weight(w float64) {
+func (s *DenseStore) Reweight(w float64) error {
+	if w < 0 {
+		return errors.New("can't reweight by a negative weight")
+	}
+	if w == 1 {
+		return nil
+	}
 	s.count *= w
 	for idx := s.minIndex; idx <= s.maxIndex; idx++ {
 		s.bins[idx-s.offset] *= w
 	}
+	return nil
 }

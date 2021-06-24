@@ -38,7 +38,8 @@ type Store interface {
 	KeyAtRank(rank float64) int
 	MergeWith(store Store)
 	ToProto() *sketchpb.Store
-	Weight(w float64)
+	// Reweight multiplies all values from the store by w, but keeps the same global distribution.
+	Reweight(w float64) error
 }
 
 // Returns an instance of DenseStore that contains the data in the provided protobuf representation.
