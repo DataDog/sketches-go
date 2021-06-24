@@ -794,6 +794,16 @@ func TestSparseStoreSerialization(t *testing.T) {
 	}
 }
 
+func assertStoreBinsLogicallyEquivalent(t *testing.T, store1 Store, store2 Store) {
+	store1Bins := make([]Bin, 0)
+	store1.ForEach(func(bin Bin) bool {
+		store1Bins = append(store1Bins, bin)
+		return false
+	})
+	sort.Slice(store1Bins, func(i, j int) bool { return store1Bins[i].index < store1Bins[j].index })
+	assertEncodeBins(t, store2, store1Bins)
+}
+
 func TestBufferPaginatedStoreSerialization(t *testing.T) {
 	nTests := 100
 	// Store indices are limited to the int32 range
@@ -807,8 +817,20 @@ func TestBufferPaginatedStoreSerialization(t *testing.T) {
 		}
 		deserializedStore := NewBufferedPaginatedStore()
 		PopulateStoreFromProto(deserializedStore, store.ToProto())
-		sort.Ints(store.buffer)
-		sort.Ints(deserializedStore.buffer)
+
+		// when serializing / deserializing, the "before" and "after" stores may not be exactly equal because some
+		// points may be stored in the buffer in one version, but stored in a page in the other. So to compare them to
+		// see if they are logically equivalent, check that their logical bins are equivalent, then compare other fields
+		assertStoreBinsLogicallyEquivalent(t, store, deserializedStore)
+
+		// clear fields that are allowed to differ and assert all other fields are equal
+		store.buffer = []int{}
+		deserializedStore.buffer = []int{}
+		store.pages = [][]float64{}
+		deserializedStore.pages = [][]float64{}
+		store.minPageIndex = 0
+		deserializedStore.minPageIndex = 0
+
 		assert.Equal(t, store, deserializedStore)
 	}
 }
