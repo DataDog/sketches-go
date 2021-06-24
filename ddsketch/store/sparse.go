@@ -143,7 +143,7 @@ func (s *SparseStore) ToProto() *sketchpb.Store {
 }
 
 func (s *SparseStore) Reweight(w float64) error {
-	if w < 0 {
+	if w <= 0 {
 		return errors.New("can't reweight by a negative weight")
 	}
 	if w == 1 {

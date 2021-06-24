@@ -241,7 +241,7 @@ func (s *DenseStore) ToProto() *sketchpb.Store {
 }
 
 func (s *DenseStore) Reweight(w float64) error {
-	if w < 0 {
+	if w <= 0 {
 		return errors.New("can't reweight by a negative weight")
 	}
 	if w == 1 {
