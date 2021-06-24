@@ -295,7 +295,7 @@ func TestReweight(t *testing.T) {
 			s.Add(generator.Generate())
 		}
 		expectedQuantiles, _ := s.GetValuesAtQuantiles(testQuantiles)
-		s.Reweight(3)
+		assert.Nil(t, s.Reweight(3))
 		// no matter the weight constant, the quantiles should stay the same.
 		quantiles, _ := s.GetValuesAtQuantiles(testQuantiles)
 		for i, q := range quantiles {

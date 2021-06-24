@@ -249,8 +249,19 @@ func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, n
 	})
 }
 
-func (s *DDSketch) Reweight(w float64) {
+func (s *DDSketch) Reweight(w float64) error {
+	if w <= 0 {
+		return errors.New("can't reweight by a negative weight")
+	}
+	if w == 1 {
+		return nil
+	}
 	s.zeroCount *= w
-	s.positiveValueStore.Reweight(w)
-	s.negativeValueStore.Reweight(w)
+	if err := s.positiveValueStore.Reweight(w); err != nil {
+		return err
+	}
+	if err := s.negativeValueStore.Reweight(w); err != nil {
+		return err
+	}
+	return nil
 }
