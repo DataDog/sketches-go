@@ -279,3 +279,29 @@ func TestChangeMapping(t *testing.T) {
 		assert.InDelta(t, e, q, floatingPointAcceptableError+e*(0.01+0.007))
 	}
 }
+
+// TestReweight tests the reweighting of a sketch by a constant.
+func TestReweight(t *testing.T) {
+	m, _ := mapping.NewLogarithmicMapping(0.01)
+	sketches := []*DDSketch{
+		NewDDSketch(m, store.NewDenseStore(), store.NewDenseStore()),
+		NewDDSketch(m, store.NewSparseStore(), store.NewSparseStore()),
+		NewDDSketch(m, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore()),
+	}
+	testSize := 1000
+	for _, s := range sketches {
+		generator := dataset.NewNormal(50, 1)
+		for i := 0; i < testSize; i++ {
+			s.Add(generator.Generate())
+		}
+		expectedQuantiles, _ := s.GetValuesAtQuantiles(testQuantiles)
+		assert.Nil(t, s.Reweight(3))
+		// no matter the weight constant, the quantiles should stay the same.
+		quantiles, _ := s.GetValuesAtQuantiles(testQuantiles)
+		for i, q := range quantiles {
+			e := expectedQuantiles[i]
+			assert.InDelta(t, e, q, floatingPointAcceptableError+e*0.01)
+		}
+		assert.InDelta(t, float64(3*testSize), s.GetCount(), floatingPointAcceptableError)
+	}
+}

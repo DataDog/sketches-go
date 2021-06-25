@@ -546,3 +546,23 @@ func (s *BufferedPaginatedStore) ToProto() *sketchpb.Store {
 		BinCounts: binCounts,
 	}
 }
+
+func (s *BufferedPaginatedStore) Reweight(w float64) error {
+	if w <= 0 {
+		return errors.New("can't reweight by a negative factor")
+	}
+	if w == 1 {
+		return nil
+	}
+	buffer := s.buffer
+	s.buffer = s.buffer[:0]
+	for _, p := range s.pages {
+		for i := range p {
+			p[i] *= w
+		}
+	}
+	for _, index := range buffer {
+		s.AddWithCount(index, w)
+	}
+	return nil
+}

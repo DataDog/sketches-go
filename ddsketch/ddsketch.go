@@ -263,3 +263,22 @@ func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, n
 		return false
 	})
 }
+
+// Reweight multiplies all values from the sketch by w, but keeps the same global distribution.
+// w has to be strictly greater than 0.
+func (s *DDSketch) Reweight(w float64) error {
+	if w <= 0 {
+		return errors.New("can't reweight by a negative factor")
+	}
+	if w == 1 {
+		return nil
+	}
+	s.zeroCount *= w
+	if err := s.positiveValueStore.Reweight(w); err != nil {
+		return err
+	}
+	if err := s.negativeValueStore.Reweight(w); err != nil {
+		return err
+	}
+	return nil
+}

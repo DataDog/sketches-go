@@ -6,6 +6,7 @@
 package store
 
 import (
+	"errors"
 	"sort"
 
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
@@ -139,4 +140,17 @@ func (s *SparseStore) ToProto() *sketchpb.Store {
 		binCounts[index] = count
 	}
 	return &sketchpb.Store{BinCounts: binCounts}
+}
+
+func (s *SparseStore) Reweight(w float64) error {
+	if w <= 0 {
+		return errors.New("can't reweight by a negative factor")
+	}
+	if w == 1 {
+		return nil
+	}
+	for index := range s.counts {
+		s.counts[index] *= w
+	}
+	return nil
 }
