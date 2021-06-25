@@ -789,7 +789,7 @@ func TestSparseStoreSerialization(t *testing.T) {
 			store.Add(int(v))
 		}
 		deserializedStore := NewSparseStore()
-		PopulateStoreFromProto(deserializedStore, store.ToProto())
+		MergeWithProto(deserializedStore, store.ToProto())
 		assert.Equal(t, store, deserializedStore)
 	}
 }
@@ -816,7 +816,7 @@ func TestBufferPaginatedStoreSerialization(t *testing.T) {
 			store.Add(int(v))
 		}
 		deserializedStore := NewBufferedPaginatedStore()
-		PopulateStoreFromProto(deserializedStore, store.ToProto())
+		MergeWithProto(deserializedStore, store.ToProto())
 
 		// when serializing / deserializing, the "before" and "after" stores may not be exactly equal because some
 		// points may be stored in the buffer in one version, but stored in a page in the other. So to compare them to

@@ -51,15 +51,18 @@ type Store interface {
 // FromProto returns an instance of DenseStore that contains the data in the provided protobuf representation.
 func FromProto(pb *sketchpb.Store) *DenseStore {
 	store := NewDenseStore()
-	PopulateStoreFromProto(store, pb)
+	MergeWithProto(store, pb)
 	return store
 }
 
-func PopulateStoreFromProto(emptyStore Store, pb *sketchpb.Store) {
+// MergeWithProto merges the distribution in a protobuf Store to an existing store.
+// - if called with an empty store, this simply populates the store with the distribution in the protobuf Store.
+// - if called with a non-empty store, this has the same outcome as deserializing the protobuf Store, then merging.
+func MergeWithProto(store Store, pb *sketchpb.Store) {
 	for idx, count := range pb.BinCounts {
-		emptyStore.AddWithCount(int(idx), count)
+		store.AddWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
-		emptyStore.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
+		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
 }

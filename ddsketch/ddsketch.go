@@ -225,16 +225,9 @@ func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 
 func FromProtoWithStoreProvider(pb *sketchpb.DDSketch, storeProvider store.Provider) (*DDSketch, error) {
 	positiveValueStore := storeProvider()
-	store.PopulateStoreFromProto(positiveValueStore, pb.PositiveValues)
+	store.MergeWithProto(positiveValueStore, pb.PositiveValues)
 	negativeValueStore := storeProvider()
-	store.PopulateStoreFromProto(negativeValueStore, pb.NegativeValues)
-	return FromProtoWithStores(pb, positiveValueStore, negativeValueStore)
-}
-
-// FromProtoWithStores builds a new instance of DDSketch based on the provided protobuf representation, with the given
-// positive and negative value stores. This is useful when you want to re-use stores.
-// Note: the stores are not populated in this function.
-func FromProtoWithStores(pb *sketchpb.DDSketch, positiveValueStore store.Store, negativeValueStore store.Store) (*DDSketch, error) {
+	store.MergeWithProto(negativeValueStore, pb.NegativeValues)
 	m, err := mapping.FromProto(pb.Mapping)
 	if err != nil {
 		return nil, err
