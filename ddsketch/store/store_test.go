@@ -749,7 +749,7 @@ func AssertDenseStoresEqual(t *testing.T, store DenseStore, other DenseStore) {
 	)
 }
 
-func TestSerialization(t *testing.T) {
+func TestDenseStoreSerialization(t *testing.T) {
 	nTests := 100
 	// Store indices are limited to the int32 range
 	var values []int32
@@ -774,6 +774,64 @@ func TestSerialization(t *testing.T) {
 			// Store does not change after serializing
 			assert.Equal(t, storeHigh.maxNumBins, maxNumBins)
 		}
+	}
+}
+
+func TestSparseStoreSerialization(t *testing.T) {
+	nTests := 100
+	// Store indices are limited to the int32 range
+	var values []int32
+	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+	for i := 0; i < nTests; i++ {
+		f.Fuzz(&values)
+		store := NewSparseStore()
+		for _, v := range values {
+			store.Add(int(v))
+		}
+		deserializedStore := NewSparseStore()
+		MergeWithProto(deserializedStore, store.ToProto())
+		assert.Equal(t, store, deserializedStore)
+	}
+}
+
+func assertStoreBinsLogicallyEquivalent(t *testing.T, store1 Store, store2 Store) {
+	store1Bins := make([]Bin, 0)
+	store1.ForEach(func(bin Bin) bool {
+		store1Bins = append(store1Bins, bin)
+		return false
+	})
+	sort.Slice(store1Bins, func(i, j int) bool { return store1Bins[i].index < store1Bins[j].index })
+	assertEncodeBins(t, store2, store1Bins)
+}
+
+func TestBufferPaginatedStoreSerialization(t *testing.T) {
+	nTests := 100
+	// Store indices are limited to the int32 range
+	var values []int32
+	f := fuzz.New().NilChance(0).NumElements(10, 1000)
+	for i := 0; i < nTests; i++ {
+		f.Fuzz(&values)
+		store := NewBufferedPaginatedStore()
+		for _, v := range values {
+			store.Add(int(v))
+		}
+		deserializedStore := NewBufferedPaginatedStore()
+		MergeWithProto(deserializedStore, store.ToProto())
+
+		// when serializing / deserializing, the "before" and "after" stores may not be exactly equal because some
+		// points may be stored in the buffer in one version, but stored in a page in the other. So to compare them to
+		// see if they are logically equivalent, check that their logical bins are equivalent, then compare other fields
+		assertStoreBinsLogicallyEquivalent(t, store, deserializedStore)
+
+		// clear fields that are allowed to differ and assert all other fields are equal
+		store.buffer = []int{}
+		deserializedStore.buffer = []int{}
+		store.pages = [][]float64{}
+		deserializedStore.pages = [][]float64{}
+		store.minPageIndex = 0
+		deserializedStore.minPageIndex = 0
+
+		assert.Equal(t, store, deserializedStore)
 	}
 }
 

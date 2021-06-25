@@ -218,16 +218,24 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 	}
 }
 
-// FromProto builds a new instance of DDSketch based on the provided protobuf representation.
+// FromProto builds a new instance of DDSketch based on the provided protobuf representation, using a Dense store.
 func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
+	return FromProtoWithStoreProvider(pb, store.DenseStoreConstructor)
+}
+
+func FromProtoWithStoreProvider(pb *sketchpb.DDSketch, storeProvider store.Provider) (*DDSketch, error) {
+	positiveValueStore := storeProvider()
+	store.MergeWithProto(positiveValueStore, pb.PositiveValues)
+	negativeValueStore := storeProvider()
+	store.MergeWithProto(negativeValueStore, pb.NegativeValues)
 	m, err := mapping.FromProto(pb.Mapping)
 	if err != nil {
 		return nil, err
 	}
 	return &DDSketch{
 		IndexMapping:       m,
-		positiveValueStore: store.FromProto(pb.PositiveValues),
-		negativeValueStore: store.FromProto(pb.NegativeValues),
+		positiveValueStore: positiveValueStore,
+		negativeValueStore: negativeValueStore,
 		zeroCount:          pb.ZeroCount,
 	}, nil
 }
@@ -247,13 +255,13 @@ func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore 
 }
 
 func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, newStore store.Store, scaleFactor float64) {
-	oldStore.ForEach(func(bin store.Bin) (stop bool){
-		inLowerBound := oldMapping.LowerBound(bin.Index())*scaleFactor
-		inHigherBound := oldMapping.LowerBound(bin.Index() + 1)*scaleFactor
+	oldStore.ForEach(func(bin store.Bin) (stop bool) {
+		inLowerBound := oldMapping.LowerBound(bin.Index()) * scaleFactor
+		inHigherBound := oldMapping.LowerBound(bin.Index()+1) * scaleFactor
 		inSize := inHigherBound - inLowerBound
 		for outIndex := newMapping.Index(inLowerBound); newMapping.LowerBound(outIndex) < inHigherBound; outIndex++ {
 			outLowerBound := newMapping.LowerBound(outIndex)
-			outHigherBound := newMapping.LowerBound(outIndex+1)
+			outHigherBound := newMapping.LowerBound(outIndex + 1)
 			lowerIntersectionBound := math.Max(outLowerBound, inLowerBound)
 			higherIntersectionBound := math.Min(outHigherBound, inHigherBound)
 			intersectionSize := higherIntersectionBound - lowerIntersectionBound

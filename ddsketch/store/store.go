@@ -11,6 +11,14 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
+type Provider func() Store
+
+var (
+	DenseStoreConstructor             = Provider(func() Store { return NewDenseStore() })
+	BufferedPaginatedStoreConstructor = Provider(func() Store { return NewBufferedPaginatedStore() })
+	SparseStoreConstructor            = Provider(func() Store { return NewSparseStore() })
+)
+
 const (
 	maxInt = int(^uint(0) >> 1)
 	minInt = ^maxInt
@@ -42,14 +50,21 @@ type Store interface {
 	Reweight(w float64) error
 }
 
-// Returns an instance of DenseStore that contains the data in the provided protobuf representation.
+// FromProto returns an instance of DenseStore that contains the data in the provided protobuf representation.
 func FromProto(pb *sketchpb.Store) *DenseStore {
 	store := NewDenseStore()
+	MergeWithProto(store, pb)
+	return store
+}
+
+// MergeWithProto merges the distribution in a protobuf Store to an existing store.
+// - if called with an empty store, this simply populates the store with the distribution in the protobuf Store.
+// - if called with a non-empty store, this has the same outcome as deserializing the protobuf Store, then merging.
+func MergeWithProto(store Store, pb *sketchpb.Store) {
 	for idx, count := range pb.BinCounts {
 		store.AddWithCount(int(idx), count)
 	}
 	for idx, count := range pb.ContiguousBinCounts {
 		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
-	return store
 }

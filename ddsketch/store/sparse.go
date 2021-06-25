@@ -136,8 +136,8 @@ func (s *SparseStore) MergeWith(store Store) {
 
 func (s *SparseStore) ToProto() *sketchpb.Store {
 	binCounts := make(map[int32]float64)
-	for index, count := range binCounts {
-		binCounts[index] = count
+	for index, count := range s.counts {
+		binCounts[int32(index)] = count
 	}
 	return &sketchpb.Store{BinCounts: binCounts}
 }
