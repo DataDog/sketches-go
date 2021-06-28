@@ -97,7 +97,15 @@ func (s *DDSketch) Copy() *DDSketch {
 		IndexMapping:       s.IndexMapping,
 		positiveValueStore: s.positiveValueStore.Copy(),
 		negativeValueStore: s.negativeValueStore.Copy(),
+		zeroCount:          s.zeroCount,
 	}
+}
+
+// Clear empties the sketch while allowing reusing already allocated memory.
+func (s *DDSketch) Clear() {
+	s.positiveValueStore.Clear()
+	s.negativeValueStore.Clear()
+	s.zeroCount = 0
 }
 
 // Return the value at the specified quantile. Return a non-nil error if the quantile is invalid

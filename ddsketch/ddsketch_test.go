@@ -6,11 +6,12 @@
 package ddsketch
 
 import (
-	"github.com/DataDog/sketches-go/ddsketch/mapping"
-	"github.com/DataDog/sketches-go/ddsketch/store"
 	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/DataDog/sketches-go/ddsketch/mapping"
+	"github.com/DataDog/sketches-go/ddsketch/store"
 
 	"github.com/DataDog/sketches-go/dataset"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
@@ -267,6 +268,14 @@ func TestConsistentMerge(t *testing.T) {
 		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
 	}
 }
+func TestCopy(t *testing.T) {
+	sketch, _ := LogUnboundedDenseDDSketch(0.01)
+	sketch.AddWithCount(0, 1.2)
+	sketch.Add(3.4)
+	sketch.AddWithCount(-5.6, 7.8)
+	copy := sketch.Copy()
+	assert.Equal(t, sketch.GetCount(), copy.GetCount())
+}
 
 // TestChangeMapping tests the change of mapping of a DDSketch.
 func TestChangeMapping(t *testing.T) {
@@ -311,4 +320,13 @@ func TestReweight(t *testing.T) {
 		}
 		assert.InDelta(t, float64(3*testSize), s.GetCount(), floatingPointAcceptableError)
 	}
+}
+
+func TestClear(t *testing.T) {
+	sketch, _ := LogUnboundedDenseDDSketch(0.01)
+	sketch.AddWithCount(0, 1.2)
+	sketch.Add(3.4)
+	sketch.AddWithCount(-5.6, 7.8)
+	sketch.Clear()
+	assert.Zero(t, sketch.GetCount())
 }

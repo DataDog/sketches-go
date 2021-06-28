@@ -72,6 +72,12 @@ func (s *SparseStore) Copy() Store {
 	return &SparseStore{counts: countsCopy}
 }
 
+func (s *SparseStore) Clear() {
+	for index := range s.counts {
+		delete(s.counts, index)
+	}
+}
+
 func (s *SparseStore) IsEmpty() bool {
 	return len(s.counts) == 0
 }
@@ -154,3 +160,5 @@ func (s *SparseStore) Reweight(w float64) error {
 	}
 	return nil
 }
+
+var _ Store = (*SparseStore)(nil)

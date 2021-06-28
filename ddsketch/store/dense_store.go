@@ -76,7 +76,7 @@ func (s *DenseStore) extendRange(newMinIndex, newMaxIndex int) {
 
 	if s.IsEmpty() {
 		initialLength := s.getNewLength(newMinIndex, newMaxIndex)
-		s.bins = make([]float64, initialLength)
+		s.bins = append(s.bins, make([]float64, initialLength)...)
 		s.offset = newMinIndex
 		s.minIndex = newMinIndex
 		s.maxIndex = newMaxIndex
@@ -89,9 +89,7 @@ func (s *DenseStore) extendRange(newMinIndex, newMaxIndex int) {
 		// we may grow it before we actually reach the capacity.
 		newLength := s.getNewLength(newMinIndex, newMaxIndex)
 		if newLength > len(s.bins) {
-			tmpBins := make([]float64, newLength)
-			copy(tmpBins, s.bins)
-			s.bins = tmpBins
+			s.bins = append(s.bins, make([]float64, newLength-len(s.bins))...)
 		}
 		s.adjust(newMinIndex, newMaxIndex)
 	}
@@ -217,6 +215,13 @@ func (s *DenseStore) Copy() Store {
 	}
 }
 
+func (s *DenseStore) Clear() {
+	s.bins = s.bins[:0]
+	s.count = 0
+	s.minIndex = math.MaxInt32
+	s.maxIndex = math.MinInt32
+}
+
 func (s *DenseStore) string() string {
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
@@ -253,3 +258,5 @@ func (s *DenseStore) Reweight(w float64) error {
 	}
 	return nil
 }
+
+var _ Store = (*DenseStore)(nil)

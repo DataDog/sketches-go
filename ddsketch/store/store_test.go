@@ -105,7 +105,7 @@ func randomCount(random *rand.Rand) float64 {
 func TestEmpty(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			assertEncodeBins(t, testCase.newStore(), nil)
+			testStore(t, testCase.newStore(), nil)
 		})
 	}
 }
@@ -136,7 +136,7 @@ func TestAddIntDatasets(t *testing.T) {
 						storeAdd.Add(index)
 					}
 					normalizedBins := normalize(testCase.transformBins(bins))
-					assertEncodeBins(t, storeAdd, normalizedBins)
+					testStore(t, storeAdd, normalizedBins)
 				}
 				for _, count := range counts {
 					bins := make([]Bin, 0, len(dataset))
@@ -149,8 +149,8 @@ func TestAddIntDatasets(t *testing.T) {
 						storeAddWithCount.AddWithCount(index, count)
 					}
 					normalizedBins := normalize(testCase.transformBins(bins))
-					assertEncodeBins(t, storeAddBin, normalizedBins)
-					assertEncodeBins(t, storeAddWithCount, normalizedBins)
+					testStore(t, storeAddBin, normalizedBins)
+					testStore(t, storeAddWithCount, normalizedBins)
 
 				}
 			}
@@ -176,9 +176,9 @@ func TestAddConstant(t *testing.T) {
 					}
 					bins := []Bin{{index: index, count: float64(count)}}
 					normalizedBins := normalize(testCase.transformBins(bins))
-					assertEncodeBins(t, storeAdd, normalizedBins)
-					assertEncodeBins(t, storeAddBin, normalizedBins)
-					assertEncodeBins(t, storeAddWithCount, normalizedBins)
+					testStore(t, storeAdd, normalizedBins)
+					testStore(t, storeAddBin, normalizedBins)
+					testStore(t, storeAddWithCount, normalizedBins)
 				}
 			}
 		})
@@ -205,9 +205,9 @@ func TestAddMonotonous(t *testing.T) {
 						storeAddWithCount.AddWithCount(index, 1)
 					}
 					normalizedBins := normalize(testCase.transformBins(bins))
-					assertEncodeBins(t, storeAdd, normalizedBins)
-					assertEncodeBins(t, storeAddBin, normalizedBins)
-					assertEncodeBins(t, storeAddWithCount, normalizedBins)
+					testStore(t, storeAdd, normalizedBins)
+					testStore(t, storeAddBin, normalizedBins)
+					testStore(t, storeAddWithCount, normalizedBins)
 				}
 			}
 		})
@@ -234,8 +234,8 @@ func TestAddFuzzy(t *testing.T) {
 					storeAddWithCount.AddWithCount(bin.index, bin.count)
 				}
 				normalizedBins := normalize(testCase.transformBins(bins))
-				assertEncodeBins(t, storeAddBin, normalizedBins)
-				assertEncodeBins(t, storeAddWithCount, normalizedBins)
+				testStore(t, storeAddBin, normalizedBins)
+				testStore(t, storeAddWithCount, normalizedBins)
 			}
 		})
 	}
@@ -263,9 +263,9 @@ func TestAddIntFuzzy(t *testing.T) {
 					storeAddWithCount.AddWithCount(bin.index, bin.count)
 				}
 				normalizedBins := normalize(testCase.transformBins(bins))
-				assertEncodeBins(t, storeAdd, normalizedBins)
-				assertEncodeBins(t, storeAddBin, normalizedBins)
-				assertEncodeBins(t, storeAddWithCount, normalizedBins)
+				testStore(t, storeAdd, normalizedBins)
+				testStore(t, storeAddBin, normalizedBins)
+				testStore(t, storeAddWithCount, normalizedBins)
 			}
 		})
 	}
@@ -294,11 +294,24 @@ func TestMergeFuzzy(t *testing.T) {
 					store.MergeWith(tmpStore)
 				}
 				normalizedBins := normalize(testCase.transformBins(bins))
-				assertEncodeBins(t, store, normalizedBins)
+				testStore(t, store, normalizedBins)
 			}
 
 		})
 	}
+}
+
+func testStore(t *testing.T, store Store, normalizedBins []Bin) {
+	assertEncodeBins(t, store, normalizedBins)
+	copy := store.Copy()
+	store.Clear()
+	assertEncodeBins(t, copy, normalizedBins)
+	assertEncodeBins(t, store, nil)
+	perm := rand.Perm(len(normalizedBins))
+	for _, i := range perm {
+		store.AddBin(normalizedBins[i])
+	}
+	assertEncodeBins(t, store, normalizedBins)
 }
 
 func assertEncodeBins(t *testing.T, store Store, normalizedBins []Bin) {
@@ -899,7 +912,7 @@ func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
 			store.MergeWithProto(tmpStore.ToProto())
 		}
 		normalizedBins := normalize(bins)
-		assertEncodeBins(t, store, normalizedBins)
+		testStore(t, store, normalizedBins)
 	}
 }
 
