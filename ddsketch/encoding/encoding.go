@@ -55,27 +55,34 @@ func DecodeUvarint64(b *[]byte) (uint64, error) {
 	}
 }
 
-// EncodeVarint32 serializes 32-bit signed integers using zig-zag encoding,
+// EncodeVarint64 serializes 64-bit signed integers using zig-zag encoding,
 // which ensures small-scale integers are turned into unsigned integers that
 // have leading zeros, whether they are positive or negative, hence allows for
 // space-efficient varuint encoding of those values.
-func EncodeVarint32(b *[]byte, v int32) {
-	EncodeUvarint64(b, uint64(v>>(32-1))^(uint64(v)<<1))
+func EncodeVarint64(b *[]byte, v int64) {
+	EncodeUvarint64(b, uint64(v>>(64-1)^(v<<1)))
+}
+
+// DecodeVarint64 deserializes 64-bit signed integers that have been encoded
+// using EncodeVarint32.
+func DecodeVarint64(b *[]byte) (int64, error) {
+	v, err := DecodeUvarint64(b)
+	return int64((v >> 1) ^ -(v & 1)), err
 }
 
 var errVarint32Overflow = errors.New("varint overflows a 32-bit integer")
 
 // DecodeVarint32 deserializes 32-bit signed integers that have been encoded
-// using EncodeVarint32.
+// using EncodeVarint64.
 func DecodeVarint32(b *[]byte) (int32, error) {
-	v, err := DecodeUvarint64(b)
+	v, err := DecodeVarint64(b)
 	if err != nil {
 		return 0, err
 	}
-	if v >= uint64(1)<<32 {
+	if v > math.MaxInt32 || v < math.MinInt32 {
 		return 0, errVarint32Overflow
 	}
-	return int32(v>>1) ^ -(int32(v) & 1), err
+	return int32(v), nil
 }
 
 // EncodeFloat64LE serializes 64-bit floating-point values, starting with the

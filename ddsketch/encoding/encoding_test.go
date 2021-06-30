@@ -54,6 +54,77 @@ func TestDecodeVaruint64(t *testing.T) {
 	}
 }
 
+type int64TestCase struct {
+	decoded int64
+	encoded []byte
+}
+
+var varint64TestCases = []int64TestCase{
+	{0, []byte{0x00}},
+	{1, []byte{0x02}},
+	{63, []byte{0x7E}},
+	{64, []byte{0x80, 0x01}},
+	{65, []byte{0x82, 0x01}},
+	{127, []byte{0xFE, 0x01}},
+	{128, []byte{0x80, 0x02}},
+	{8191, []byte{0xFE, 0x7F}},
+	{8192, []byte{0x80, 0x80, 0x01}},
+	{8193, []byte{0x82, 0x80, 0x01}},
+	{math.MaxInt64>>1 - 1, []byte{0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F}},
+	{math.MaxInt64 >> 1, []byte{0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F}},
+	{math.MaxInt64>>1 + 1, []byte{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80}},
+	{math.MaxInt64 - 1, []byte{0xFC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+	{math.MaxInt64, []byte{0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+	{-1, []byte{0x01}},
+	{-63, []byte{0x7D}},
+	{-64, []byte{0x7F}},
+	{-65, []byte{0x81, 0x01}},
+	{-127, []byte{0xFD, 0x01}},
+	{-128, []byte{0xFF, 0x01}},
+	{-8191, []byte{0xFD, 0x7F}},
+	{-8192, []byte{0xFF, 0x7F}},
+	{-8193, []byte{0x81, 0x80, 0x01}},
+	{math.MinInt64>>1 + 1, []byte{0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F}},
+	{math.MinInt64 >> 1, []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F}},
+	{math.MinInt64>>1 - 1, []byte{0x81, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80}},
+	{math.MinInt64 + 1, []byte{0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+	{math.MinInt64, []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+}
+
+func TestEncodeVarint64(t *testing.T) {
+	for _, testCase := range varint64TestCases {
+		encoded := []byte{}
+		EncodeVarint64(&encoded, testCase.decoded)
+		assert.Equal(t, testCase.encoded, encoded)
+	}
+}
+
+func TestDecodeVarint64(t *testing.T) {
+	for _, testCase := range varint64TestCases {
+		enc := testCase.encoded
+		decoded, err := DecodeVarint64(&enc)
+		assert.Equal(t, testCase.decoded, decoded)
+		assert.Nil(t, err)
+		assert.Zero(t, len(enc))
+	}
+	{
+		_, err := DecodeVarint32(&[]byte{})
+		assert.Equal(t, err, io.EOF)
+	}
+	{
+		_, err := DecodeVarint32(&[]byte{0x80})
+		assert.Equal(t, err, io.EOF)
+	}
+	{
+		_, err := DecodeVarint32(&[]byte{0x80, 0x80, 0x80, 0x80, 0x10})
+		assert.Equal(t, err, errVarint32Overflow)
+	}
+	{
+		_, err := DecodeVarint32(&[]byte{0x81, 0x80, 0x80, 0x80, 0x10})
+		assert.Equal(t, err, errVarint32Overflow)
+	}
+}
+
 type int32TestCase struct {
 	decoded int32
 	encoded []byte
@@ -94,7 +165,7 @@ var varint32TestCases = []int32TestCase{
 func TestEncodeVarint32(t *testing.T) {
 	for _, testCase := range varint32TestCases {
 		encoded := []byte{}
-		EncodeVarint32(&encoded, testCase.decoded)
+		EncodeVarint64(&encoded, int64(testCase.decoded))
 		assert.Equal(t, testCase.encoded, encoded)
 	}
 }
