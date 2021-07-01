@@ -255,6 +255,9 @@ func FromProtoWithStoreProvider(pb *sketchpb.DDSketch, storeProvider store.Provi
 // accuracy, but it avoids artefacts like empty bins that make the histograms look bad.
 // scaleFactor allows to scale out / in all values. (changing units for eg)
 func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore store.Store, negativeStore store.Store, scaleFactor float64) *DDSketch {
+	if scaleFactor == 1 && s.IndexMapping.Equals(newMapping) {
+		return s
+	}
 	changeStoreMapping(s.IndexMapping, newMapping, s.positiveValueStore, positiveStore, scaleFactor)
 	changeStoreMapping(s.IndexMapping, newMapping, s.negativeValueStore, negativeStore, scaleFactor)
 	newSketch := NewDDSketch(newMapping, positiveStore, negativeStore)
