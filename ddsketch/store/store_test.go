@@ -14,11 +14,12 @@ import (
 	"sort"
 	"testing"
 
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/assert"
 )
 
-const epsilon float64 = 1e-14
+const epsilon float64 = 1e-10
 
 type TestCase struct {
 	name          string
@@ -27,6 +28,7 @@ type TestCase struct {
 }
 
 var (
+	numTests       = 30
 	testMaxNumBins = []int{8, 128, 1024}
 	testCases      = []TestCase{
 		{name: "dense", newStore: func() Store { return NewDenseStore() }, transformBins: identity},
@@ -215,7 +217,6 @@ func TestAddMonotonous(t *testing.T) {
 }
 
 func TestAddFuzzy(t *testing.T) {
-	numTests := 100
 	maxNumValues := 10000
 
 	random := rand.New(rand.NewSource(seed))
@@ -242,7 +243,6 @@ func TestAddFuzzy(t *testing.T) {
 }
 
 func TestAddIntFuzzy(t *testing.T) {
-	numTests := 100
 	maxNumValues := 10000
 
 	random := rand.New(rand.NewSource(seed))
@@ -272,7 +272,6 @@ func TestAddIntFuzzy(t *testing.T) {
 }
 
 func TestMergeFuzzy(t *testing.T) {
-	numTests := 100
 	numMerges := 3
 	maxNumAdds := 1000
 
@@ -303,6 +302,11 @@ func TestMergeFuzzy(t *testing.T) {
 
 func testStore(t *testing.T, store Store, normalizedBins []Bin) {
 	assertEncodeBins(t, store, normalizedBins)
+	testCopy(t, store, normalizedBins)
+	testEncodingDecoding(t, store, normalizedBins)
+}
+
+func testCopy(t *testing.T, store Store, normalizedBins []Bin) {
 	copy := store.Copy()
 	store.Clear()
 	assertEncodeBins(t, copy, normalizedBins)
@@ -312,6 +316,36 @@ func testStore(t *testing.T, store Store, normalizedBins []Bin) {
 		store.AddBin(normalizedBins[i])
 	}
 	assertEncodeBins(t, store, normalizedBins)
+}
+
+func testEncodingDecoding(t *testing.T, store Store, normalizedBins []Bin) {
+	encoded := []byte{}
+	store.Encode(&encoded, enc.FlagTypePositiveStore)
+
+	// Test decoding into any store.
+	for _, testCase := range testCases {
+		testCaseEncoded := encoded
+
+		decoded := testCase.newStore()
+		decodeBins(t, decoded, testCaseEncoded)
+
+		decodedNormalizedBins := normalize(testCase.transformBins(normalizedBins))
+		assertEncodeBins(t, decoded, decodedNormalizedBins)
+	}
+}
+
+func decodeBins(t *testing.T, s Store, b []byte) {
+	for len(b) > 0 {
+		flag, err := enc.DecodeFlag(&b)
+		if err != nil {
+			assert.Fail(t, err.Error())
+		}
+		if flag.Type() != enc.FlagTypePositiveStore && flag.Type() != enc.FlagTypeNegativeStore {
+			assert.Fail(t, "Flag is not a bin encoding flag")
+		}
+		err = s.DecodeAndMergeWith(&b, flag.SubFlag())
+		assert.Nil(t, err)
+	}
 }
 
 func assertEncodeBins(t *testing.T, store Store, normalizedBins []Bin) {
@@ -902,7 +936,6 @@ func TestBufferedPaginatedCompactionOutliers(t *testing.T) {
 }
 
 func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
-	numTests := 100
 	numMerges := 3
 	maxNumAdds := 1000
 
@@ -924,6 +957,37 @@ func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
 		normalizedBins := normalize(bins)
 		testStore(t, store, normalizedBins)
 	}
+}
+
+func TestBufferedPaginatedDecode(t *testing.T) {
+	storeFlagType := enc.FlagTypePositiveStore
+	b := &[]byte{}
+	bins := []Bin{}
+
+	numBufferEncodedIndexes := 1000
+	enc.EncodeFlag(b, enc.NewFlag(storeFlagType, enc.BinEncodingIndexDeltas))
+	enc.EncodeUvarint64(b, uint64(numBufferEncodedIndexes))
+	enc.EncodeVarint64(b, 0)
+	bins = append(bins, Bin{index: 0, count: 1})
+	for index := 1; index < numBufferEncodedIndexes; index++ {
+		enc.EncodeVarint64(b, 1)
+		bins = append(bins, Bin{index: index, count: 1})
+	}
+
+	minPageEncodedIndex := 39
+	maxPageEncodedIndex := 147
+	enc.EncodeFlag(b, enc.NewFlag(storeFlagType, enc.BinEncodingContiguousCounts))
+	enc.EncodeUvarint64(b, uint64(maxPageEncodedIndex-minPageEncodedIndex)+1)
+	enc.EncodeVarint64(b, int64(minPageEncodedIndex))
+	for index := minPageEncodedIndex; index <= maxPageEncodedIndex; index++ {
+		count := 1.5
+		enc.EncodeVarfloat64(b, count)
+		bins = append(bins, Bin{index: index, count: count})
+	}
+
+	decoded := NewBufferedPaginatedStore()
+	decodeBins(t, decoded, *b)
+	assertEncodeBins(t, decoded, normalize(bins))
 }
 
 // Benchmarks

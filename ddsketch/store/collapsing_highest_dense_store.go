@@ -5,7 +5,11 @@
 
 package store
 
-import "math"
+import (
+	"math"
+
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
+)
 
 type CollapsingHighestDenseStore struct {
 	DenseStore
@@ -174,6 +178,10 @@ func (s *CollapsingHighestDenseStore) Copy() Store {
 func (s *CollapsingHighestDenseStore) Clear() {
 	s.DenseStore.Clear()
 	s.isCollapsed = false
+}
+
+func (s *CollapsingHighestDenseStore) DecodeAndMergeWith(r *[]byte, encodingMode enc.SubFlag) error {
+	return DecodeAndMergeWith(s, r, encodingMode)
 }
 
 var _ Store = (*CollapsingHighestDenseStore)(nil)

@@ -5,7 +5,11 @@
 
 package store
 
-import "math"
+import (
+	"math"
+
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
+)
 
 // CollapsingLowestDenseStore is a dynamically growing contiguous (non-sparse) store.
 // The lower bins get combined so that the total number of bins do not exceed maxNumBins.
@@ -179,6 +183,10 @@ func (s *CollapsingLowestDenseStore) Copy() Store {
 func (s *CollapsingLowestDenseStore) Clear() {
 	s.DenseStore.Clear()
 	s.isCollapsed = false
+}
+
+func (s *CollapsingLowestDenseStore) DecodeAndMergeWith(r *[]byte, encodingMode enc.SubFlag) error {
+	return DecodeAndMergeWith(s, r, encodingMode)
 }
 
 var _ Store = (*CollapsingLowestDenseStore)(nil)

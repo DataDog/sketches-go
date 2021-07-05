@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -260,6 +261,23 @@ func (s *DenseStore) Reweight(w float64) error {
 		s.bins[idx-s.offset] *= w
 	}
 	return nil
+}
+
+func (s *DenseStore) Encode(b *[]byte, t enc.FlagType) {
+	if s.IsEmpty() {
+		return
+	}
+	enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingContiguousCounts))
+	numBins := uint64(s.maxIndex-s.minIndex) + 1
+	enc.EncodeUvarint64(b, numBins)
+	enc.EncodeVarint64(b, int64(s.minIndex))
+	for index := s.minIndex; index <= s.maxIndex; index++ {
+		enc.EncodeVarfloat64(b, s.bins[index-s.offset])
+	}
+}
+
+func (s *DenseStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.SubFlag) error {
+	return DecodeAndMergeWith(s, b, encodingMode)
 }
 
 var _ Store = (*DenseStore)(nil)

@@ -8,6 +8,7 @@ package store
 import (
 	"errors"
 
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -54,6 +55,16 @@ type Store interface {
 	ToProto() *sketchpb.Store
 	// Reweight multiplies all values from the store by w, but keeps the same global distribution.
 	Reweight(w float64) error
+	// Encode encodes the bins of the store and appends its content to the
+	// provided []byte.
+	// The provided FlagType indicates whether the store encodes positive or
+	// negative values.
+	Encode(b *[]byte, t enc.FlagType)
+	// DecodeAndMergeWith decodes bins that have been encoded in the format of
+	// the provided binEncodingMode and merges them within the receiver store.
+	// It updates the provided []byte so that it starts immediately after the
+	// encoded bins.
+	DecodeAndMergeWith(b *[]byte, binEncodingMode enc.SubFlag) error
 }
 
 // FromProto returns an instance of DenseStore that contains the data in the provided protobuf representation.
@@ -73,4 +84,65 @@ func MergeWithProto(store Store, pb *sketchpb.Store) {
 	for idx, count := range pb.ContiguousBinCounts {
 		store.AddWithCount(idx+int(pb.ContiguousBinIndexOffset), count)
 	}
+}
+
+func DecodeAndMergeWith(s Store, b *[]byte, binEncodingMode enc.SubFlag) error {
+	switch binEncodingMode {
+
+	case enc.BinEncodingIndexDeltasAndCounts:
+		numBins, err := enc.DecodeUvarint64(b)
+		if err != nil {
+			return err
+		}
+		index := int64(0)
+		for i := uint64(0); i < numBins; i++ {
+			indexDelta, err := enc.DecodeVarint64(b)
+			if err != nil {
+				return err
+			}
+			count, err := enc.DecodeVarfloat64(b)
+			if err != nil {
+				return err
+			}
+			index += indexDelta
+			s.AddWithCount(int(index), count)
+		}
+
+	case enc.BinEncodingIndexDeltas:
+		numBins, err := enc.DecodeUvarint64(b)
+		if err != nil {
+			return err
+		}
+		index := int64(0)
+		for i := uint64(0); i < numBins; i++ {
+			indexDelta, err := enc.DecodeVarint64(b)
+			if err != nil {
+				return err
+			}
+			index += indexDelta
+			s.Add(int(index))
+		}
+
+	case enc.BinEncodingContiguousCounts:
+		numBins, err := enc.DecodeUvarint64(b)
+		if err != nil {
+			return err
+		}
+		index, err := enc.DecodeVarint64(b)
+		if err != nil {
+			return err
+		}
+		for i := uint64(0); i < numBins; i++ {
+			count, err := enc.DecodeVarfloat64(b)
+			if err != nil {
+				return err
+			}
+			s.AddWithCount(int(index), count)
+			index++
+		}
+
+	default:
+		return errors.New("unknown bin encoding")
+	}
+	return nil
 }
