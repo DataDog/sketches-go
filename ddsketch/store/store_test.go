@@ -422,6 +422,16 @@ func EvaluateBins(t *testing.T, bins []Bin, values []int) {
 	assert.ElementsMatch(t, binValues, values)
 }
 
+func TestNegativeRank(t *testing.T) {
+	for _, testCase := range testCases {
+		store := testCase.newStore()
+		index := 2
+		store.AddWithCount(index, 0.1)
+		key := store.KeyAtRank(-1)
+		assert.Equal(t, index, key)
+	}
+}
+
 func TestDenseBins(t *testing.T) {
 	nTests := 100
 	f := fuzz.New().NilChance(0).NumElements(10, 1000)

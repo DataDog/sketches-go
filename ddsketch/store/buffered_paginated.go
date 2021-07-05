@@ -316,6 +316,9 @@ func (s *BufferedPaginatedStore) MaxIndex() (int, error) {
 }
 
 func (s *BufferedPaginatedStore) KeyAtRank(rank float64) int {
+	if rank < 0 {
+		rank = 0
+	}
 	key, err := s.minIndexWithCumulCount(func(cumulCount float64) bool {
 		return cumulCount > rank
 	})

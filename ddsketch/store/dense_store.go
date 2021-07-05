@@ -150,6 +150,9 @@ func (s *DenseStore) MaxIndex() (int, error) {
 
 // Return the key for the value at rank
 func (s *DenseStore) KeyAtRank(rank float64) int {
+	if rank < 0 {
+		rank = 0
+	}
 	var n float64
 	for i, b := range s.bins {
 		n += b
