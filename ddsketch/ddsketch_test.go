@@ -538,12 +538,31 @@ var serTestCases []serTestCase = []serTestCase{
 		deser: func(b []byte, s *DDSketch) {
 			var sketchPb sketchpb.DDSketch
 			proto.Unmarshal(b, &sketchPb)
-			serialized, _ := FromProto(&sketchPb)
+
+			// Reuse stores
+			store1 := s.positiveValueStore
+			store2 := s.negativeValueStore
+			store1.Clear()
+			store2.Clear()
+			storeProvider := store.Provider(func() store.Store {
+				if store1 != nil {
+					s := store1
+					store1 = nil
+					return s
+				} else if store2 != nil {
+					s := store2
+					store2 = nil
+					return s
+				}
+				panic("cannot reuse stores")
+			})
+
+			serialized, _ := FromProtoWithStoreProvider(&sketchPb, storeProvider)
 			*s = *serialized
 		},
 	},
 	{
-		name: "custom_reusing",
+		name: "custom",
 		ser: func(s *DDSketch, b *[]byte) {
 			*b = (*b)[:0]
 			s.Encode(b, false)
