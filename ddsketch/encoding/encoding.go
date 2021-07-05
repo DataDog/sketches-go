@@ -110,13 +110,12 @@ func DecodeFloat64LE(b *[]byte) (float64, error) {
 // to integer values, then shifted again as integer values (-Float64bits(1)).
 // That is in order to minimize the number of non-zero bits when dealing with
 // non-negative integer values.
-// After that transformation, any input value that is an integer and that is no
-// greater than 2^53 (larger integer value that can be encoded exactly as a
-// 64-bit floating-point value) will have at least 6 leading zero bits. By
-// rotating bits to the left, those bits end up at the right of the binary
-// representation.
+// After that transformation, any input integer value no greater than 2^53 (the
+// largest integer value that can be encoded exactly as a 64-bit floating-point
+// value) will have at least 6 leading zero bits. By rotating bits to the left,
+// those bits end up at the right of the binary representation.
 // The resulting bits are then encoded similarly to the varuint method, but
-// starting the the most significant bits.
+// starting with the most significant bits.
 func EncodeVarfloat64(b *[]byte, v float64) {
 	x := bits.RotateLeft64(math.Float64bits(v+1)-math.Float64bits(1), varfloat64Rotate)
 	for i := 0; i < MaxVarLen64-1; i++ {
