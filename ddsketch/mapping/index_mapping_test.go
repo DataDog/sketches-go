@@ -93,7 +93,7 @@ func TestLowerBound(t *testing.T) {
 	for _, mapping := range []IndexMapping{logMapping, linearMapping, cubicalMapping} {
 		for _, i := range testIndexes {
 			lowerBound := mapping.LowerBound(i)
-			previous := mapping.Value(i-1)
+			previous := mapping.Value(i - 1)
 			next := mapping.Value(i)
 			assert.GreaterOrEqual(t, lowerBound, previous)
 			assert.GreaterOrEqual(t, next, lowerBound)
