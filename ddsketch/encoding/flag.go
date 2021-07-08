@@ -56,8 +56,8 @@ var (
 	// The subflag specifies the interpolation method.
 	// Encoding format:
 	// - [byte] flag
-	// - [varfloat64] gamma
-	// - [varfloat64] index offset
+	// - [float64LE] gamma
+	// - [float64LE] index offset
 	FlagIndexMappingBaseLogarithmic = NewFlag(FlagTypeIndexMapping, newSubFlag(0))
 	FlagIndexMappingBaseLinear      = NewFlag(FlagTypeIndexMapping, newSubFlag(1))
 	FlagIndexMappingBaseQuadratic   = NewFlag(FlagTypeIndexMapping, newSubFlag(2))
