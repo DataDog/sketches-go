@@ -9,6 +9,7 @@ import (
 	"errors"
 	"sort"
 
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -316,6 +317,9 @@ func (s *BufferedPaginatedStore) MaxIndex() (int, error) {
 }
 
 func (s *BufferedPaginatedStore) KeyAtRank(rank float64) int {
+	if rank < 0 {
+		rank = 0
+	}
 	key, err := s.minIndexWithCumulCount(func(cumulCount float64) bool {
 		return cumulCount > rank
 	})
@@ -557,6 +561,91 @@ func (s *BufferedPaginatedStore) Reweight(w float64) error {
 		s.AddWithCount(index, w)
 	}
 	return nil
+}
+
+func (s *BufferedPaginatedStore) Encode(b *[]byte, t enc.FlagType) {
+	if len(s.buffer) > 0 {
+		enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingIndexDeltas))
+		enc.EncodeUvarint64(b, uint64(len(s.buffer)))
+		previousIndex := 0
+		for _, index := range s.buffer {
+			enc.EncodeVarint64(b, int64(index-previousIndex))
+			previousIndex = index
+		}
+	}
+
+	for pageOffset, page := range s.pages {
+		if len(page) > 0 {
+			enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingContiguousCounts))
+			enc.EncodeUvarint64(b, uint64(len(page)))
+			enc.EncodeVarint64(b, int64(s.index(s.minPageIndex+pageOffset, 0)))
+			for _, count := range page {
+				enc.EncodeVarfloat64(b, count)
+			}
+		}
+	}
+}
+
+func (s *BufferedPaginatedStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.SubFlag) error {
+	switch encodingMode {
+
+	case enc.BinEncodingIndexDeltas:
+		numBins, err := enc.DecodeUvarint64(b)
+		if err != nil {
+			return err
+		}
+		remaining := int(numBins)
+		index := int64(0)
+		// Process indexes in batches to avoid checking after each insertion
+		// whether compaction should happen.
+		for {
+			batchSize := min(remaining, max(cap(s.buffer), s.bufferCompactionTriggerLen)-len(s.buffer))
+			for i := 0; i < batchSize; i++ {
+				indexDelta, err := enc.DecodeVarint64(b)
+				if err != nil {
+					return err
+				}
+				index += indexDelta
+				s.buffer = append(s.buffer, int(index))
+			}
+			remaining -= batchSize
+			if remaining == 0 {
+				return nil
+			}
+			s.compact()
+		}
+
+	case enc.BinEncodingContiguousCounts:
+		numBins, err := enc.DecodeUvarint64(b)
+		if err != nil {
+			return err
+		}
+		indexOffset, err := enc.DecodeVarint64(b)
+		if err != nil {
+			return err
+		}
+		pageLen := 1 << s.pageLenLog2
+		pageIndex := s.pageIndex(int(indexOffset))
+		lineIndex := s.lineIndex(int(indexOffset))
+		for i := uint64(0); i < numBins; {
+			page := s.page(pageIndex, true)
+			for lineIndex < pageLen && i < numBins {
+				count, err := enc.DecodeVarfloat64(b)
+				if err != nil {
+					return err
+				}
+				page[lineIndex] += count
+				lineIndex++
+				i++
+			}
+			pageIndex++
+			lineIndex = 0
+		}
+		return nil
+
+	default:
+		return DecodeAndMergeWith(s, b, encodingMode)
+	}
 }
 
 var _ Store = (*BufferedPaginatedStore)(nil)

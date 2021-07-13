@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -99,13 +100,23 @@ func (m *LogarithmicMapping) RelativeAccuracy() float64 {
 	return m.relativeAccuracy
 }
 
+func (m *LogarithmicMapping) gamma() float64 {
+	return (1 + m.relativeAccuracy) / (1 - m.relativeAccuracy)
+}
+
 // Generates a protobuf representation of this LogarithicMapping.
 func (m *LogarithmicMapping) ToProto() *sketchpb.IndexMapping {
 	return &sketchpb.IndexMapping{
-		Gamma:         (1 + m.relativeAccuracy) / (1 - m.relativeAccuracy),
+		Gamma:         m.gamma(),
 		IndexOffset:   m.normalizedIndexOffset,
 		Interpolation: sketchpb.IndexMapping_NONE,
 	}
+}
+
+func (m *LogarithmicMapping) Encode(b *[]byte) {
+	enc.EncodeFlag(b, enc.FlagIndexMappingBaseLogarithmic)
+	enc.EncodeFloat64LE(b, m.gamma())
+	enc.EncodeFloat64LE(b, m.normalizedIndexOffset)
 }
 
 func (m *LogarithmicMapping) string() string {
@@ -113,3 +124,5 @@ func (m *LogarithmicMapping) string() string {
 	buffer.WriteString(fmt.Sprintf("relativeAccuracy: %v, multiplier: %v, normalizedIndexOffset: %v\n", m.relativeAccuracy, m.multiplier, m.normalizedIndexOffset))
 	return buffer.String()
 }
+
+var _ IndexMapping = (*LogarithmicMapping)(nil)

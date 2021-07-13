@@ -9,6 +9,7 @@ import (
 	"errors"
 	"sort"
 
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
@@ -159,6 +160,24 @@ func (s *SparseStore) Reweight(w float64) error {
 		s.counts[index] *= w
 	}
 	return nil
+}
+
+func (s *SparseStore) Encode(b *[]byte, t enc.FlagType) {
+	if s.IsEmpty() {
+		return
+	}
+	enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingIndexDeltasAndCounts))
+	enc.EncodeUvarint64(b, uint64(len(s.counts)))
+	previousIndex := 0
+	for index, count := range s.counts {
+		enc.EncodeVarint64(b, int64(index-previousIndex))
+		enc.EncodeVarfloat64(b, count)
+		previousIndex = index
+	}
+}
+
+func (s *SparseStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.SubFlag) error {
+	return DecodeAndMergeWith(s, b, encodingMode)
 }
 
 var _ Store = (*SparseStore)(nil)
