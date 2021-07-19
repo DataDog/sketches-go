@@ -337,6 +337,29 @@ func TestClear(t *testing.T) {
 	assert.Zero(t, sketch.GetCount())
 }
 
+func TestForEach(t *testing.T) {
+	{ // Empty.
+		sketch, _ := LogUnboundedDenseDDSketch(0.01)
+		sketch.ForEach(func(value, count float64) (stop bool) {
+			assert.Fail(t, "empty sketch should have no bin")
+			return false
+		})
+	}
+	for i := 0; i < 3; i++ { // Stopping condition.
+		sketch, _ := LogUnboundedDenseDDSketch(0.01)
+		sketch.Add(0)
+		sketch.Add(1)
+		sketch.Add(-1)
+		j := 0
+		sketch.ForEach(func(value, count float64) (stop bool) {
+			assert.LessOrEqual(t, j, i)
+			j++
+			return j > i
+		})
+		assert.Equal(t, i, j-1)
+	}
+}
+
 func TestDecodingErrors(t *testing.T) {
 	mapping1, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
 	mapping2, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.04, 0)
