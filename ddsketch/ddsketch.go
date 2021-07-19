@@ -198,15 +198,20 @@ func (s *DDSketch) GetMinValue() (float64, error) {
 // values that have been added to the sketch all have the same sign, the approximation error has
 // the relative accuracy guarantees of the mapping used for this sketch.
 func (s *DDSketch) GetSum() (sum float64) {
-	s.positiveValueStore.ForEach(func(b store.Bin) bool {
-		sum += s.IndexMapping.Value(b.Index()) * b.Count()
-		return false
-	})
-	s.negativeValueStore.ForEach(func(b store.Bin) bool {
-		sum -= s.IndexMapping.Value(b.Index()) * b.Count()
+	s.ForEach(func(value float64, count float64) (stop bool) {
+		sum += value * count
 		return false
 	})
 	return sum
+}
+
+func (s *DDSketch) ForEach(f func(value, count float64) (stop bool)) {
+	s.positiveValueStore.ForEach(func(b store.Bin) bool {
+		return f(s.IndexMapping.Value(b.Index()), b.Count())
+	})
+	s.negativeValueStore.ForEach(func(b store.Bin) bool {
+		return f(-s.IndexMapping.Value(b.Index()), b.Count())
+	})
 }
 
 // Merges the other sketch into this one. After this operation, this sketch encodes the values that
