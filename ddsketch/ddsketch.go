@@ -208,6 +208,9 @@ func (s *DDSketch) GetSum() (sum float64) {
 // ForEach applies f on the bins of the sketches until f returns true.
 // There is not guarantee on the bin iteration order.
 func (s *DDSketch) ForEach(f func(value, count float64) (stop bool)) {
+	if s.zeroCount != 0 && f(0, s.zeroCount) {
+		return
+	}
 	stopped := false
 	s.positiveValueStore.ForEach(func(b store.Bin) bool {
 		stopped = f(s.IndexMapping.Value(b.Index()), b.Count())
