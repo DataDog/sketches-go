@@ -206,9 +206,14 @@ func (s *DDSketch) GetSum() (sum float64) {
 }
 
 func (s *DDSketch) ForEach(f func(value, count float64) (stop bool)) {
+	stopped := false
 	s.positiveValueStore.ForEach(func(b store.Bin) bool {
-		return f(s.IndexMapping.Value(b.Index()), b.Count())
+		stopped = f(s.IndexMapping.Value(b.Index()), b.Count())
+		return stopped
 	})
+	if stopped {
+		return
+	}
 	s.negativeValueStore.ForEach(func(b store.Bin) bool {
 		return f(-s.IndexMapping.Value(b.Index()), b.Count())
 	})
