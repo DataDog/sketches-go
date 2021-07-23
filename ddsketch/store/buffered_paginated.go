@@ -57,12 +57,11 @@ type BufferedPaginatedStore struct {
 }
 
 func NewBufferedPaginatedStore() *BufferedPaginatedStore {
-	initialBufferCapacity := 4
 	pageLenLog2 := defaultPageLenLog2
 	pageLen := 1 << pageLenLog2
 
 	return &BufferedPaginatedStore{
-		buffer:                     make([]int, 0, initialBufferCapacity),
+		buffer:                     nil,
 		bufferCompactionTriggerLen: 2 * pageLen,
 		pages:                      nil,
 		minPageIndex:               maxInt,
