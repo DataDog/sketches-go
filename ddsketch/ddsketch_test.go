@@ -29,6 +29,7 @@ type testCase struct {
 	sketch                 func() quantileSketch
 	exactSummaryStatistics bool
 	mergeWith              func(s1, s2 quantileSketch)
+	decode                 func(b []byte) (quantileSketch, error)
 }
 
 var (
@@ -44,6 +45,9 @@ var (
 			mergeWith: func(s1, s2 quantileSketch) {
 				s1.(*DDSketch).MergeWith(s2.(*DDSketch))
 			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketch(b, store.DenseStoreConstructor, nil)
+			},
 		},
 		{
 			sketch: func() quantileSketch {
@@ -53,6 +57,9 @@ var (
 			exactSummaryStatistics: false,
 			mergeWith: func(s1, s2 quantileSketch) {
 				s1.(*DDSketch).MergeWith(s2.(*DDSketch))
+			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketch(b, store.DenseStoreConstructor, nil)
 			},
 		},
 		{
@@ -64,6 +71,9 @@ var (
 			mergeWith: func(s1, s2 quantileSketch) {
 				s1.(*DDSketchWithExactSummaryStatistics).MergeWith(s2.(*DDSketchWithExactSummaryStatistics))
 			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketchWithExactSummaryStatistics(b, store.DenseStoreConstructor, nil)
+			},
 		},
 		{
 			sketch: func() quantileSketch {
@@ -74,39 +84,42 @@ var (
 			mergeWith: func(s1, s2 quantileSketch) {
 				s1.(*DDSketchWithExactSummaryStatistics).MergeWith(s2.(*DDSketchWithExactSummaryStatistics))
 			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketchWithExactSummaryStatistics(b, store.DenseStoreConstructor, nil)
+			},
 		},
 	}
 )
 
-func evaluateSketch(t *testing.T, n int, gen dataset.Generator, sketch quantileSketch, exactSummaryStatistics bool) {
+func evaluateSketch(t *testing.T, n int, gen dataset.Generator, sketch quantileSketch, testCase testCase) {
 	data := dataset.NewDataset()
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
 		sketch.Add(value)
 		data.Add(value)
 	}
-	assertSketchesAccurate(t, data, sketch, exactSummaryStatistics)
+	assertSketchesAccurate(t, data, sketch, testCase.exactSummaryStatistics)
 	// Add negative numbers
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
 		sketch.Add(-value)
 		data.Add(-value)
 	}
-	assertSketchesAccurate(t, data, sketch, exactSummaryStatistics)
+	assertSketchesAccurate(t, data, sketch, testCase.exactSummaryStatistics)
 
 	// for each store type, serialize / deserialize the sketch into a sketch with that store type, and check that new sketch is still accurate
-	assertDeserializedSketchAccurate(t, sketch, store.DenseStoreConstructor, data, exactSummaryStatistics)
-	assertDeserializedSketchAccurate(t, sketch, store.BufferedPaginatedStoreConstructor, data, exactSummaryStatistics)
-	assertDeserializedSketchAccurate(t, sketch, store.SparseStoreConstructor, data, exactSummaryStatistics)
+	assertDeserializedSketchAccurate(t, sketch, store.DenseStoreConstructor, data, testCase)
+	assertDeserializedSketchAccurate(t, sketch, store.BufferedPaginatedStoreConstructor, data, testCase)
+	assertDeserializedSketchAccurate(t, sketch, store.SparseStoreConstructor, data, testCase)
 }
 
 // makes sure that if we serialize and deserialize a sketch, it will still be accurate
-func assertDeserializedSketchAccurate(t *testing.T, sketch quantileSketch, storeProvider store.Provider, data *dataset.Dataset, exactSummaryStatistics bool) {
+func assertDeserializedSketchAccurate(t *testing.T, sketch quantileSketch, storeProvider store.Provider, data *dataset.Dataset, testCase testCase) {
 	encoded := &[]byte{}
 	sketch.Encode(encoded, false)
-	decoded, err := DecodeDDSketch(*encoded, store.BufferedPaginatedStoreConstructor)
+	decoded, err := testCase.decode(*encoded)
 	assert.Nil(t, err)
-	assertSketchesAccurate(t, data, decoded, false)
+	assertSketchesAccurate(t, data, decoded, testCase.exactSummaryStatistics)
 
 	s, ok := sketch.(*DDSketch)
 	if !ok {
@@ -179,7 +192,7 @@ func TestConstant(t *testing.T) {
 	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			constantGenerator := dataset.NewConstant(float64(rand.Int()))
-			evaluateSketch(t, n, constantGenerator, testCase.sketch(), testCase.exactSummaryStatistics)
+			evaluateSketch(t, n, constantGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
@@ -188,7 +201,7 @@ func TestLinear(t *testing.T) {
 	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			linearGenerator := dataset.NewLinear()
-			evaluateSketch(t, n, linearGenerator, testCase.sketch(), testCase.exactSummaryStatistics)
+			evaluateSketch(t, n, linearGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
@@ -197,7 +210,7 @@ func TestNormal(t *testing.T) {
 	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			normalGenerator := dataset.NewNormal(35, 1)
-			evaluateSketch(t, n, normalGenerator, testCase.sketch(), testCase.exactSummaryStatistics)
+			evaluateSketch(t, n, normalGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
@@ -206,7 +219,7 @@ func TestLognormal(t *testing.T) {
 	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			lognormalGenerator := dataset.NewLognormal(0, -2)
-			evaluateSketch(t, n, lognormalGenerator, testCase.sketch(), testCase.exactSummaryStatistics)
+			evaluateSketch(t, n, lognormalGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
@@ -215,7 +228,7 @@ func TestExponential(t *testing.T) {
 	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			expGenerator := dataset.NewExponential(1.5)
-			evaluateSketch(t, n, expGenerator, testCase.sketch(), testCase.exactSummaryStatistics)
+			evaluateSketch(t, n, expGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
@@ -451,18 +464,18 @@ func TestDecodingErrors(t *testing.T) {
 	mapping2, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.04, 0)
 	storeProvider := store.BufferedPaginatedStoreConstructor
 	{
-		decoded, err := DecodeDDSketchWithIndexMapping([]byte{}, storeProvider, mapping1)
+		decoded, err := DecodeDDSketch([]byte{}, storeProvider, mapping1)
 		assert.Nil(t, err)
 		assert.True(t, decoded.IsEmpty())
 	}
 	{
-		_, err := DecodeDDSketch([]byte{}, storeProvider)
+		_, err := DecodeDDSketch([]byte{}, storeProvider, nil)
 		assert.Error(t, err)
 	}
 	{
 		encoded := &[]byte{}
 		mapping2.Encode(encoded)
-		_, err := DecodeDDSketch(*encoded, storeProvider)
+		_, err := DecodeDDSketch(*encoded, storeProvider, nil)
 		assert.Nil(t, err)
 	}
 	{
@@ -477,6 +490,23 @@ func TestDecodingErrors(t *testing.T) {
 		mapping2.Encode(encoded)
 		err := sketch.DecodeAndMergeWith(*encoded)
 		assert.Error(t, err)
+	}
+	{ // with exact summary statistics -> without exact summary statistics (valid)
+		sketch := NewDDSketchWithExactSummaryStatistics(mapping1, storeProvider)
+		sketch.Add(0)
+		encoded := &[]byte{}
+		sketch.Encode(encoded, false)
+		decoded, err := DecodeDDSketchWithExactSummaryStatistics(*encoded, storeProvider, nil)
+		assert.Nil(t, err)
+		assert.Equal(t, 1.0, decoded.GetCount())
+	}
+	{ // without exact summary statistics -> with exact summary statistics (error)
+		sketch := NewDDSketchFromStoreProvider(mapping1, storeProvider)
+		sketch.Add(0)
+		encoded := &[]byte{}
+		sketch.Encode(encoded, false)
+		_, err := DecodeDDSketchWithExactSummaryStatistics(*encoded, storeProvider, nil)
+		assert.NotNil(t, err)
 	}
 }
 

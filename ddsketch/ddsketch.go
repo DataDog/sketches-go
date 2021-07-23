@@ -7,6 +7,7 @@ package ddsketch
 
 import (
 	"errors"
+	"io"
 	"math"
 
 	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
@@ -16,7 +17,10 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/store"
 )
 
-var errEmptySketch error = errors.New("no such element exists")
+var (
+	errEmptySketch error = errors.New("no such element exists")
+	errUnknownFlag error = errors.New("unknown encoding flag")
+)
 
 // Unexported to prevent usage and avoid the cost of dynamic dispatch
 type quantileSketch interface {
@@ -327,24 +331,14 @@ func (s *DDSketch) Encode(b *[]byte, omitIndexMapping bool) {
 // To avoid memory allocations, it is possible to use a store provider that
 // reuses stores, by calling Clear() on previously used stores before providing
 // the store.
-// If the serialized content does not contain the index mapping, DecodeDDSketch
-// returns an error.
-func DecodeDDSketch(b []byte, storeProvider store.Provider) (*DDSketch, error) {
-	return DecodeDDSketchWithIndexMapping(b, storeProvider, nil)
-}
-
-// DecodeDDSketchWithIndexMapping deserializes a sketch.
-// Stores are built using storeProvider. The store type needs not match the
-// store that the serialized sketch initially used. However, using the same
-// store type may make decoding faster. In the absence of high performance
-// requirements, store.BufferedPaginatedStoreConstructor is a sound enough
-// choice of store provider.
-// To avoid memory allocations, it is possible to use a store provider that
-// reuses stores, by calling Clear() on previously used stores before providing
-// the store.
-// If the serialized content contains an index mapping that differs from the
-// provided one, DecodeDDSketchWithIndexMapping returns an error.
-func DecodeDDSketchWithIndexMapping(b []byte, storeProvider store.Provider, indexMapping mapping.IndexMapping) (*DDSketch, error) {
+// If the serialized data does not contain the index mapping, you need to
+// specify the index mapping that was used in the sketch that was encoded.
+// Otherwise, you can use nil and the index mapping will be decoded from the
+// serialized data.
+// It is possible to decode with this function an encoded
+// DDSketchWithExactSummaryStatistics, but the exact summary statistics will be
+// lost.
+func DecodeDDSketch(b []byte, storeProvider store.Provider, indexMapping mapping.IndexMapping) (*DDSketch, error) {
 	s := &DDSketch{
 		IndexMapping:       indexMapping,
 		positiveValueStore: storeProvider(),
@@ -360,6 +354,22 @@ func DecodeDDSketchWithIndexMapping(b []byte, storeProvider store.Provider, inde
 // If the serialized content contains an index mapping that differs from the one
 // of the receiver, DecodeAndMergeWith returns an error.
 func (s *DDSketch) DecodeAndMergeWith(bb []byte) error {
+	return s.decodeAndMergeWith(bb, func(b *[]byte, flag enc.Flag) error {
+		switch flag {
+		case enc.FlagCount, enc.FlagSum, enc.FlagMin, enc.FlagMax:
+			// Exact summary stats are ignored.
+			if len(*b) < 8 {
+				return io.EOF
+			}
+			*b = (*b)[8:]
+			return nil
+		default:
+			return errUnknownFlag
+		}
+	})
+}
+
+func (s *DDSketch) decodeAndMergeWith(bb []byte, fallbackDecode func(b *[]byte, flag enc.Flag) error) error {
 	b := &bb
 	for len(*b) > 0 {
 		flag, err := enc.DecodeFlag(b)
@@ -391,7 +401,10 @@ func (s *DDSketch) DecodeAndMergeWith(bb []byte) error {
 				s.zeroCount += decodedZeroCount
 
 			default:
-				return errors.New("unknown encoding flag")
+				err := fallbackDecode(b, flag)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -605,11 +618,89 @@ func (s *DDSketchWithExactSummaryStatistics) ChangeMapping(newMapping mapping.In
 }
 
 func (s *DDSketchWithExactSummaryStatistics) Encode(b *[]byte, omitIndexMapping bool) {
+	if s.summaryStatistics.Count() != 0 {
+		enc.EncodeFlag(b, enc.FlagCount)
+		enc.EncodeFloat64LE(b, s.summaryStatistics.Count())
+	}
+	if s.summaryStatistics.Sum() != 0 {
+		enc.EncodeFlag(b, enc.FlagSum)
+		enc.EncodeFloat64LE(b, s.summaryStatistics.Sum())
+	}
+	if s.summaryStatistics.Min() != math.Inf(1) {
+		enc.EncodeFlag(b, enc.FlagMin)
+		enc.EncodeFloat64LE(b, s.summaryStatistics.Min())
+	}
+	if s.summaryStatistics.Max() != math.Inf(-1) {
+		enc.EncodeFlag(b, enc.FlagMax)
+		enc.EncodeFloat64LE(b, s.summaryStatistics.Max())
+	}
 	s.sketch.Encode(b, omitIndexMapping)
-	// TODO: encode summary stats
 }
 
-func (s *DDSketchWithExactSummaryStatistics) DecodeAndMergeWith(b []byte) error {
-	return s.sketch.DecodeAndMergeWith(b)
-	// TODO: decode summary stats
+// DecodeDDSketchWithExactSummaryStatistics deserializes a sketch.
+// Stores are built using storeProvider. The store type needs not match the
+// store that the serialized sketch initially used. However, using the same
+// store type may make decoding faster. In the absence of high performance
+// requirements, store.DefaultProvider is a sound enough choice of store
+// provider.
+// To avoid memory allocations, it is possible to use a store provider that
+// reuses stores, by calling Clear() on previously used stores before providing
+// the store.
+// If the serialized data does not contain the index mapping, you need to
+// specify the index mapping that was used in the sketch that was encoded.
+// Otherwise, you can use nil and the index mapping will be decoded from the
+// serialized data.
+// It is not possible to decode with this function an encoded DDSketch (unless
+// it is empty), because it does not track exact summary statistics
+func DecodeDDSketchWithExactSummaryStatistics(b []byte, storeProvider store.Provider, indexMapping mapping.IndexMapping) (*DDSketchWithExactSummaryStatistics, error) {
+	s := &DDSketchWithExactSummaryStatistics{
+		sketch: &DDSketch{
+			IndexMapping:       indexMapping,
+			positiveValueStore: storeProvider(),
+			negativeValueStore: storeProvider(),
+			zeroCount:          float64(0),
+		},
+		summaryStatistics: stat.NewSummaryStatistics(),
+	}
+	err := s.DecodeAndMergeWith(b)
+	return s, err
+}
+
+func (s *DDSketchWithExactSummaryStatistics) DecodeAndMergeWith(bb []byte) error {
+	err := s.sketch.decodeAndMergeWith(bb, func(b *[]byte, flag enc.Flag) error {
+		switch flag {
+		case enc.FlagCount:
+			count, err := enc.DecodeFloat64LE(b)
+			if err != nil {
+				return err
+			}
+			s.summaryStatistics.AddToCount(count)
+			return nil
+		case enc.FlagSum:
+			sum, err := enc.DecodeFloat64LE(b)
+			if err != nil {
+				return err
+			}
+			s.summaryStatistics.AddToSum(sum)
+			return nil
+		case enc.FlagMin, enc.FlagMax:
+			stat, err := enc.DecodeFloat64LE(b)
+			if err != nil {
+				return err
+			}
+			s.summaryStatistics.Add(stat, 0)
+			return nil
+		default:
+			return errUnknownFlag
+		}
+	})
+	if err != nil {
+		return err
+	}
+	// It is assumed that if the count is encoded, other exact summary
+	// statistics are encoded as well, which is the case if Encode is used.
+	if s.summaryStatistics.Count() == 0 && !s.sketch.IsEmpty() {
+		return errors.New("missing exact summary statistics")
+	}
+	return nil
 }
