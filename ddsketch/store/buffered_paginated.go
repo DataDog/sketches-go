@@ -510,7 +510,13 @@ func (s *BufferedPaginatedStore) Copy() Store {
 	bufferCopy := make([]int, len(s.buffer))
 	copy(bufferCopy, s.buffer)
 	pagesCopy := make([][]float64, len(s.pages))
-	copy(pagesCopy, s.pages)
+	for i, page := range s.pages {
+		if len(page) > 0 {
+			pageCopy := make([]float64, len(page))
+			copy(pageCopy, page)
+			pagesCopy[i] = pageCopy
+		}
+	}
 	return &BufferedPaginatedStore{
 		buffer:                     bufferCopy,
 		bufferCompactionTriggerLen: s.bufferCompactionTriggerLen,

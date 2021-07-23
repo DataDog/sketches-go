@@ -308,6 +308,8 @@ func testStore(t *testing.T, store Store, normalizedBins []Bin) {
 
 func testCopy(t *testing.T, store Store, normalizedBins []Bin) {
 	copy := store.Copy()
+	store.MergeWith(copy)
+	assertEncodeBins(t, copy, normalizedBins)
 	store.Clear()
 	assertEncodeBins(t, copy, normalizedBins)
 	assertEncodeBins(t, store, nil)
