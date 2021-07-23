@@ -242,6 +242,34 @@ func TestAddFuzzy(t *testing.T) {
 	}
 }
 
+func TestAddFuzzyReusing(t *testing.T) {
+	maxNumValues := 10000
+
+	random := rand.New(rand.NewSource(seed))
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			storeAddBin := testCase.newStore()
+			storeAddWithCount := testCase.newStore()
+			for i := 0; i < numTests; i++ {
+				bins := make([]Bin, 0)
+				numValues := random.Intn(maxNumValues)
+				storeAddBin.Clear()
+				storeAddWithCount.Clear()
+				for j := 0; j < numValues; j++ {
+					bin := Bin{index: randomIndex(random), count: randomCount(random)}
+					bins = append(bins, bin)
+					storeAddBin.AddBin(bin)
+					storeAddWithCount.AddWithCount(bin.index, bin.count)
+				}
+				normalizedBins := normalize(testCase.transformBins(bins))
+				testStore(t, storeAddBin, normalizedBins)
+				testStore(t, storeAddWithCount, normalizedBins)
+			}
+		})
+	}
+}
+
 func TestAddIntFuzzy(t *testing.T) {
 	maxNumValues := 10000
 
@@ -254,6 +282,38 @@ func TestAddIntFuzzy(t *testing.T) {
 				storeAdd := testCase.newStore()
 				storeAddBin := testCase.newStore()
 				storeAddWithCount := testCase.newStore()
+				numValues := random.Intn(maxNumValues)
+				for j := 0; j < numValues; j++ {
+					bin := Bin{index: randomIndex(random), count: 1}
+					bins = append(bins, bin)
+					storeAdd.Add(bin.index)
+					storeAddBin.AddBin(bin)
+					storeAddWithCount.AddWithCount(bin.index, bin.count)
+				}
+				normalizedBins := normalize(testCase.transformBins(bins))
+				testStore(t, storeAdd, normalizedBins)
+				testStore(t, storeAddBin, normalizedBins)
+				testStore(t, storeAddWithCount, normalizedBins)
+			}
+		})
+	}
+}
+
+func TestAddIntFuzzyReusing(t *testing.T) {
+	maxNumValues := 10000
+
+	random := rand.New(rand.NewSource(seed))
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			storeAdd := testCase.newStore()
+			storeAddBin := testCase.newStore()
+			storeAddWithCount := testCase.newStore()
+			for i := 0; i < numTests; i++ {
+				bins := make([]Bin, 0)
+				storeAdd.Clear()
+				storeAddBin.Clear()
+				storeAddWithCount.Clear()
 				numValues := random.Intn(maxNumValues)
 				for j := 0; j < numValues; j++ {
 					bin := Bin{index: randomIndex(random), count: 1}
@@ -300,10 +360,42 @@ func TestMergeFuzzy(t *testing.T) {
 	}
 }
 
+func TestMergeFuzzyReusing(t *testing.T) {
+	numMerges := 3
+	maxNumAdds := 1000
+
+	random := rand.New(rand.NewSource(seed))
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			store := testCase.newStore()
+			tmpStore := testCase.newStore()
+			for i := 0; i < numTests; i++ {
+				bins := make([]Bin, 0)
+				store.Clear()
+				for j := 0; j < numMerges; j++ {
+					numValues := random.Intn(maxNumAdds)
+					tmpStore.Clear()
+					for k := 0; k < numValues; k++ {
+						bin := Bin{index: randomIndex(random), count: randomCount(random)}
+						bins = append(bins, bin)
+						tmpStore.AddBin(bin)
+					}
+					store.MergeWith(tmpStore)
+				}
+				normalizedBins := normalize(testCase.transformBins(bins))
+				testStore(t, store, normalizedBins)
+			}
+
+		})
+	}
+}
+
 func testStore(t *testing.T, store Store, normalizedBins []Bin) {
 	assertEncodeBins(t, store, normalizedBins)
 	testCopy(t, store, normalizedBins)
 	testEncodingDecoding(t, store, normalizedBins)
+	testEncodingDecodingReusing(t, store, normalizedBins)
 }
 
 func testCopy(t *testing.T, store Store, normalizedBins []Bin) {
@@ -334,6 +426,14 @@ func testEncodingDecoding(t *testing.T, store Store, normalizedBins []Bin) {
 		decodedNormalizedBins := normalize(testCase.transformBins(normalizedBins))
 		assertEncodeBins(t, decoded, decodedNormalizedBins)
 	}
+}
+
+func testEncodingDecodingReusing(t *testing.T, store Store, normalizedBins []Bin) {
+	encoded := []byte{}
+	store.Encode(&encoded, enc.FlagTypePositiveStore)
+	store.Clear()
+	decodeBins(t, store, encoded)
+	assertEncodeBins(t, store, normalizedBins)
 }
 
 func decodeBins(t *testing.T, s Store, b []byte) {
