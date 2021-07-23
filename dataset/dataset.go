@@ -8,6 +8,8 @@ package dataset
 import (
 	"math"
 	"sort"
+
+	"github.com/DataDog/sketches-go/ddsketch/stat"
 )
 
 type Dataset struct {
@@ -57,6 +59,14 @@ func (d *Dataset) Min() float64 {
 func (d *Dataset) Max() float64 {
 	d.sort()
 	return d.Values[len(d.Values)-1]
+}
+
+func (d *Dataset) Sum() float64 {
+	summaryStatistics := stat.NewSummaryStatistics()
+	for _, v := range d.Values {
+		summaryStatistics.Add(v, 1)
+	}
+	return summaryStatistics.Sum()
 }
 
 func (d *Dataset) Merge(o *Dataset) {
