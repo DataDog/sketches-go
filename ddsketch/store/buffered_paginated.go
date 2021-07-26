@@ -50,11 +50,11 @@ type BufferedPaginatedStore struct {
 	buffer                     []int // FIXME: in practice, int32 (even int16, depending on the accuracy parameter) is enough
 	bufferCompactionTriggerLen int   // compaction happens only after this buffer length is reached
 
-	pages            [][]float64
-	minPageIndex     int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
-	pageLenLog2      int
-	pageLenMask      int
-	emptyPagePosHint int // any already allocated page has position in pages that is less than emptyPagePosHint
+	pages           [][]float64
+	minPageIndex    int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
+	pageLenLog2     int
+	pageLenMask     int
+	emptyPageMinPos int // any already allocated empty page has a position in pages that is greater than or equal to emptyPageMinPos
 }
 
 func NewBufferedPaginatedStore() *BufferedPaginatedStore {
@@ -68,7 +68,7 @@ func NewBufferedPaginatedStore() *BufferedPaginatedStore {
 		minPageIndex:               maxInt,
 		pageLenLog2:                pageLenLog2,
 		pageLenMask:                pageLen - 1,
-		emptyPagePosHint:           0,
+		emptyPageMinPos:            0,
 	}
 }
 
@@ -122,6 +122,7 @@ func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float6
 				s.pages[i] = nil
 			}
 			s.minPageIndex -= addedPagesLen
+			s.emptyPageMinPos += addedPagesLen
 		}
 	} else {
 		// Extends s.pages right.
@@ -138,20 +139,26 @@ func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float6
 }
 
 func (s *BufferedPaginatedStore) makePage(i int) {
+	pageLen := 1 << s.pageLenLog2
+
 	if len(s.pages[i]) > 0 {
 		// No need to do anything, the page exists.
 		return
 	}
-
-	pageLen := 1 << s.pageLenLog2
+	if s.pages[i] != nil {
+		// The page is empty (but allocated).
+		s.pages[i] = append(s.pages[i], make([]float64, pageLen)...)
+		return
+	}
 
 	// Look for an already allocated page (see Clear()).
-	for s.emptyPagePosHint > 0 {
-		s.emptyPagePosHint--
-		if s.pages[s.emptyPagePosHint] != nil && len(s.pages[s.emptyPagePosHint]) == 0 {
-			page := s.pages[s.emptyPagePosHint]
-			s.pages[s.emptyPagePosHint] = nil
-			s.pages[i] = append(page, make([]float64, pageLen)...)
+	for ; s.emptyPageMinPos < len(s.pages); s.emptyPageMinPos++ {
+		if s.pages[s.emptyPageMinPos] != nil && len(s.pages[s.emptyPageMinPos]) == 0 {
+			s.pages[i] = append(s.pages[s.emptyPageMinPos], make([]float64, pageLen)...)
+			// We know that s.emptyPageMinPos != i.
+			s.pages[s.emptyPageMinPos] = nil
+			s.emptyPageMinPos++
+			return
 		}
 	}
 
@@ -551,6 +558,7 @@ func (s *BufferedPaginatedStore) Copy() Store {
 		minPageIndex:               s.minPageIndex,
 		pageLenLog2:                s.pageLenLog2,
 		pageLenMask:                s.pageLenMask,
+		emptyPageMinPos:            len(pagesCopy),
 	}
 }
 
@@ -558,15 +566,17 @@ func (s *BufferedPaginatedStore) Clear() {
 	s.buffer = s.buffer[:0]
 	// Empty pages and move them to the head of s.pages so as to reuse already
 	// allocated memory.
-	s.emptyPagePosHint = 0
+	j := 0
 	for i, page := range s.pages {
 		if page != nil {
 			s.pages[i] = nil
-			s.pages[s.emptyPagePosHint] = page[:0]
-			s.emptyPagePosHint++
+			s.pages[j] = page[:0]
+			j++
 		}
 	}
-	s.pages = s.pages[:s.emptyPagePosHint]
+	// Trim s.pages; only keep enough to track empty pages.
+	s.pages = s.pages[:j]
+	s.emptyPageMinPos = 0
 	s.minPageIndex = maxInt
 }
 
