@@ -50,10 +50,11 @@ type BufferedPaginatedStore struct {
 	buffer                     []int // FIXME: in practice, int32 (even int16, depending on the accuracy parameter) is enough
 	bufferCompactionTriggerLen int   // compaction happens only after this buffer length is reached
 
-	pages        [][]float64 // len == cap, the slice is always used to its maximum capacity
-	minPageIndex int         // minPageIndex == maxInt iff pages are unused (they may still be allocated)
-	pageLenLog2  int
-	pageLenMask  int
+	pages            [][]float64 // len == cap, the slice is always used to its maximum capacity
+	minPageIndex     int         // minPageIndex == maxInt iff pages are unused (they may still be allocated)
+	pageLenLog2      int
+	pageLenMask      int
+	emptyPagePosHint int // any already allocated page has position in pages that is less than emptyPagePosHint
 }
 
 func NewBufferedPaginatedStore() *BufferedPaginatedStore {
@@ -67,6 +68,7 @@ func NewBufferedPaginatedStore() *BufferedPaginatedStore {
 		minPageIndex:               maxInt,
 		pageLenLog2:                pageLenLog2,
 		pageLenMask:                pageLen - 1,
+		emptyPagePosHint:           0,
 	}
 }
 
@@ -137,13 +139,12 @@ func (s *BufferedPaginatedStore) makePage(i int) {
 	pageLen := 1 << s.pageLenLog2
 
 	// Look for an already allocated page (see Clear()).
-	for j := i; j >= 0; j-- {
-		if s.pages[j] != nil && len(s.pages[j]) == 0 {
-			s.pages[i] = append(s.pages[j], make([]float64, pageLen)...)
-			if j != i {
-				s.pages[j] = nil
-			}
-			return
+	for s.emptyPagePosHint > 0 {
+		s.emptyPagePosHint--
+		if s.pages[s.emptyPagePosHint] != nil && len(s.pages[s.emptyPagePosHint]) == 0 {
+			page := s.pages[s.emptyPagePosHint]
+			s.pages[s.emptyPagePosHint] = nil
+			s.pages[i] = append(page, make([]float64, pageLen)...)
 		}
 	}
 
@@ -550,12 +551,12 @@ func (s *BufferedPaginatedStore) Clear() {
 	s.buffer = s.buffer[:0]
 	// Empty pages and move them to the head of s.pages so as to reuse already
 	// allocated memory.
-	j := 0
+	s.emptyPagePosHint = 0
 	for i, page := range s.pages {
 		if page != nil {
 			s.pages[i] = nil
-			s.pages[j] = page[:0]
-			j++
+			s.pages[s.emptyPagePosHint] = page[:0]
+			s.emptyPagePosHint++
 		}
 	}
 	s.minPageIndex = maxInt
