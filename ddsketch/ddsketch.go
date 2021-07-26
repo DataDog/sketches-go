@@ -620,7 +620,7 @@ func (s *DDSketchWithExactSummaryStatistics) ChangeMapping(newMapping mapping.In
 func (s *DDSketchWithExactSummaryStatistics) Encode(b *[]byte, omitIndexMapping bool) {
 	if s.summaryStatistics.Count() != 0 {
 		enc.EncodeFlag(b, enc.FlagCount)
-		enc.EncodeFloat64LE(b, s.summaryStatistics.Count())
+		enc.EncodeVarfloat64(b, s.summaryStatistics.Count())
 	}
 	if s.summaryStatistics.Sum() != 0 {
 		enc.EncodeFlag(b, enc.FlagSum)
@@ -670,7 +670,7 @@ func (s *DDSketchWithExactSummaryStatistics) DecodeAndMergeWith(bb []byte) error
 	err := s.sketch.decodeAndMergeWith(bb, func(b *[]byte, flag enc.Flag) error {
 		switch flag {
 		case enc.FlagCount:
-			count, err := enc.DecodeFloat64LE(b)
+			count, err := enc.DecodeVarfloat64(b)
 			if err != nil {
 				return err
 			}

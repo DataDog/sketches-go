@@ -50,14 +50,19 @@ var (
 	// - [varfloat64] count of the zero bin
 	FlagZeroCountVarFloat = NewFlag(flagTypeSketchFeatures, newSubFlag(1))
 
-	// Encode the summary statistics
+	// Encode the total count.
+	// Encoding format:
+	// - [byte] flag
+	// - [varfloat64] total count
+	FlagCount = NewFlag(flagTypeSketchFeatures, newSubFlag(0x28))
+
+	// Encode the summary statistics.
 	// Encoding format:
 	// - [byte] flag
 	// - [float64LE] summary stat
-	FlagCount = NewFlag(flagTypeSketchFeatures, newSubFlag(32))
-	FlagSum   = NewFlag(flagTypeSketchFeatures, newSubFlag(33))
-	FlagMin   = NewFlag(flagTypeSketchFeatures, newSubFlag(34))
-	FlagMax   = NewFlag(flagTypeSketchFeatures, newSubFlag(35))
+	FlagSum = NewFlag(flagTypeSketchFeatures, newSubFlag(0x21))
+	FlagMin = NewFlag(flagTypeSketchFeatures, newSubFlag(0x22))
+	FlagMax = NewFlag(flagTypeSketchFeatures, newSubFlag(0x23))
 
 	// INDEX MAPPING
 
