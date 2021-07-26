@@ -50,8 +50,8 @@ type BufferedPaginatedStore struct {
 	buffer                     []int // FIXME: in practice, int32 (even int16, depending on the accuracy parameter) is enough
 	bufferCompactionTriggerLen int   // compaction happens only after this buffer length is reached
 
-	pages            [][]float64 // len == cap, the slice is always used to its maximum capacity
-	minPageIndex     int         // minPageIndex == maxInt iff pages are unused (they may still be allocated)
+	pages            [][]float64
+	minPageIndex     int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
 	pageLenLog2      int
 	pageLenMask      int
 	emptyPagePosHint int // any already allocated page has position in pages that is less than emptyPagePosHint
@@ -106,23 +106,30 @@ func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float6
 	if pageIndex < s.minPageIndex {
 		if s.minPageIndex == maxInt {
 			if len(s.pages) == 0 {
-				s.pages = append(s.pages, make([][]float64, s.newPagesLen(1))...)
+				s.pages = append(s.pages, make([][]float64, s.newPagesCap(1))...)[:1]
 			}
 			s.minPageIndex = pageIndex - len(s.pages)/2
 		} else {
 			// Extends s.pages left.
-			newLen := s.newPagesLen(s.minPageIndex - pageIndex + 1 + len(s.pages))
-			addedLen := newLen - len(s.pages)
-			s.pages = append(s.pages, make([][]float64, addedLen)...)
-			copy(s.pages[addedLen:], s.pages)
-			for i := 0; i < addedLen; i++ {
+			requiredPagesLen := s.minPageIndex - pageIndex + 1 + len(s.pages)
+			addedPagesLen := requiredPagesLen - len(s.pages)
+			if requiredPagesLen > cap(s.pages) {
+				s.pages = append(s.pages, make([][]float64, s.newPagesCap(requiredPagesLen)-len(s.pages))...)
+			}
+			s.pages = s.pages[:requiredPagesLen]
+			copy(s.pages[addedPagesLen:], s.pages)
+			for i := 0; i < addedPagesLen; i++ {
 				s.pages[i] = nil
 			}
-			s.minPageIndex -= addedLen
+			s.minPageIndex -= addedPagesLen
 		}
 	} else {
 		// Extends s.pages right.
-		s.pages = append(s.pages, make([][]float64, s.newPagesLen(pageIndex-s.minPageIndex+1)-len(s.pages))...)
+		requiredPagesLen := pageIndex - s.minPageIndex + 1
+		if requiredPagesLen > cap(s.pages) {
+			s.pages = append(s.pages, make([][]float64, s.newPagesCap(requiredPagesLen)-len(s.pages))...)
+		}
+		s.pages = s.pages[:requiredPagesLen]
 	}
 
 	i := pageIndex - s.minPageIndex
@@ -152,7 +159,7 @@ func (s *BufferedPaginatedStore) makePage(i int) {
 	s.pages[i] = make([]float64, pageLen)
 }
 
-func (s *BufferedPaginatedStore) newPagesLen(required int) int {
+func (s *BufferedPaginatedStore) newPagesCap(required int) int {
 	// Grow in size by multiples of 64 bytes
 	pageGrowthIncrement := 64 * 8 / ptrSize
 	return (required + pageGrowthIncrement - 1) & -pageGrowthIncrement
@@ -559,6 +566,7 @@ func (s *BufferedPaginatedStore) Clear() {
 			s.emptyPagePosHint++
 		}
 	}
+	s.pages = s.pages[:s.emptyPagePosHint]
 	s.minPageIndex = maxInt
 }
 
