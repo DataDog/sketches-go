@@ -100,6 +100,7 @@ var (
 	// - [byte] flag
 	// - [uvarint64] number of bins N
 	// - [varint64] index of first bin
+	// - [varint64] difference between two successive indexes
 	// - [varfloat64] count of first bin
 	// - [varfloat64] count of second bin
 	// - ...

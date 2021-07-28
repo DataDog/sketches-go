@@ -585,6 +585,7 @@ func (s *BufferedPaginatedStore) Encode(b *[]byte, t enc.FlagType) {
 			enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingContiguousCounts))
 			enc.EncodeUvarint64(b, uint64(len(page)))
 			enc.EncodeVarint64(b, int64(s.index(s.minPageIndex+pageOffset, 0)))
+			enc.EncodeVarint64(b, 1)
 			for _, count := range page {
 				enc.EncodeVarfloat64(b, count)
 			}
@@ -630,22 +631,24 @@ func (s *BufferedPaginatedStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.
 		if err != nil {
 			return err
 		}
+		indexDelta, err := enc.DecodeVarint64(b)
+		if err != nil {
+			return err
+		}
 		pageLen := 1 << s.pageLenLog2
-		pageIndex := s.pageIndex(int(indexOffset))
-		lineIndex := s.lineIndex(int(indexOffset))
 		for i := uint64(0); i < numBins; {
-			page := s.page(pageIndex, true)
-			for lineIndex < pageLen && i < numBins {
+			page := s.page(s.pageIndex(int(indexOffset)), true)
+			lineIndex := s.lineIndex(int(indexOffset))
+			for lineIndex >= 0 && lineIndex < pageLen && i < numBins {
 				count, err := enc.DecodeVarfloat64(b)
 				if err != nil {
 					return err
 				}
 				page[lineIndex] += count
-				lineIndex++
+				lineIndex += int(indexDelta)
+				indexOffset += indexDelta
 				i++
 			}
-			pageIndex++
-			lineIndex = 0
 		}
 		return nil
 

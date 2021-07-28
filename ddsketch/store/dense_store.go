@@ -271,6 +271,7 @@ func (s *DenseStore) Encode(b *[]byte, t enc.FlagType) {
 	numBins := uint64(s.maxIndex-s.minIndex) + 1
 	enc.EncodeUvarint64(b, numBins)
 	enc.EncodeVarint64(b, int64(s.minIndex))
+	enc.EncodeVarint64(b, 1)
 	for index := s.minIndex; index <= s.maxIndex; index++ {
 		enc.EncodeVarfloat64(b, s.bins[index-s.offset])
 	}
