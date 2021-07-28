@@ -378,8 +378,8 @@ func assertEncodeBins(t *testing.T, store Store, normalizedBins []Bin) {
 		assert.Equal(t, normalizedBins[len(normalizedBins)-1].index, maxIndex, "max index")
 
 		forEachBins := make([]Bin, 0)
-		store.ForEach(func(bin Bin) bool {
-			forEachBins = append(forEachBins, bin)
+		store.ForEach(func(index int, count float64) bool {
+			forEachBins = append(forEachBins, Bin{index: index, count: count})
 			return false
 		})
 		sort.Slice(forEachBins, func(i, j int) bool { return forEachBins[i].index < forEachBins[j].index })
@@ -855,8 +855,8 @@ func TestSparseStoreSerialization(t *testing.T) {
 
 func assertStoreBinsLogicallyEquivalent(t *testing.T, store1 Store, store2 Store) {
 	store1Bins := make([]Bin, 0)
-	store1.ForEach(func(bin Bin) bool {
-		store1Bins = append(store1Bins, bin)
+	store1.ForEach(func(index int, count float64) bool {
+		store1Bins = append(store1Bins, Bin{index: index, count: count})
 		return false
 	})
 	sort.Slice(store1Bins, func(i, j int) bool { return store1Bins[i].index < store1Bins[j].index })

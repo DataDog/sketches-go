@@ -456,7 +456,7 @@ func (s *BufferedPaginatedStore) Bins() <-chan Bin {
 	return ch
 }
 
-func (s *BufferedPaginatedStore) ForEach(f func(b Bin) (stop bool)) {
+func (s *BufferedPaginatedStore) ForEach(f func(index int, count float64) (stop bool)) {
 	s.sortBuffer()
 	bufferPos := 0
 
@@ -483,11 +483,11 @@ func (s *BufferedPaginatedStore) ForEach(f func(b Bin) (stop bool)) {
 				if s.buffer[indexBufferStartPos] == index {
 					break
 				}
-				if f(Bin{index: s.buffer[indexBufferStartPos], count: float64(bufferPos - indexBufferStartPos)}) {
+				if f(s.buffer[indexBufferStartPos], float64(bufferPos-indexBufferStartPos)) {
 					return
 				}
 			}
-			if f(Bin{index: index, count: count + float64(bufferPos-indexBufferStartPos)}) {
+			if f(index, count+float64(bufferPos-indexBufferStartPos)) {
 				return
 			}
 		}
@@ -500,7 +500,7 @@ func (s *BufferedPaginatedStore) ForEach(f func(b Bin) (stop bool)) {
 		for bufferPos < len(s.buffer) && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
 			bufferPos++
 		}
-		if f(Bin{index: s.buffer[indexBufferStartPos], count: float64(bufferPos - indexBufferStartPos)}) {
+		if f(s.buffer[indexBufferStartPos], float64(bufferPos-indexBufferStartPos)) {
 			return
 		}
 	}
