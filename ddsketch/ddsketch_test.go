@@ -22,173 +22,270 @@ import (
 
 const (
 	epsilon                      = 1e-6 // Acceptable relative error for counts
-	floatingPointAcceptableError = 1e-12
+	floatingPointAcceptableError = 1e-11
 )
+
+type testCase struct {
+	sketch                 func() quantileSketch
+	exactSummaryStatistics bool
+	mergeWith              func(s1, s2 quantileSketch)
+	decode                 func(b []byte) (quantileSketch, error)
+}
 
 var (
-	testAlphas    = []float64{0.1, 0.01}
-	testMaxBins   = 2048
 	testQuantiles = []float64{0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1}
 	testSizes     = []int{3, 5, 10, 100, 1000}
+	testCases     = []testCase{
+		{
+			sketch: func() quantileSketch {
+				s, _ := LogUnboundedDenseDDSketch(0.1)
+				return s
+			},
+			exactSummaryStatistics: false,
+			mergeWith: func(s1, s2 quantileSketch) {
+				s1.(*DDSketch).MergeWith(s2.(*DDSketch))
+			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketch(b, store.DenseStoreConstructor, nil)
+			},
+		},
+		{
+			sketch: func() quantileSketch {
+				s, _ := LogUnboundedDenseDDSketch(0.01)
+				return s
+			},
+			exactSummaryStatistics: false,
+			mergeWith: func(s1, s2 quantileSketch) {
+				s1.(*DDSketch).MergeWith(s2.(*DDSketch))
+			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketch(b, store.DenseStoreConstructor, nil)
+			},
+		},
+		{
+			sketch: func() quantileSketch {
+				s, _ := NewDefaultDDSketchWithExactSummaryStatistics(0.1)
+				return s
+			},
+			exactSummaryStatistics: true,
+			mergeWith: func(s1, s2 quantileSketch) {
+				s1.(*DDSketchWithExactSummaryStatistics).MergeWith(s2.(*DDSketchWithExactSummaryStatistics))
+			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketchWithExactSummaryStatistics(b, store.DenseStoreConstructor, nil)
+			},
+		},
+		{
+			sketch: func() quantileSketch {
+				s, _ := NewDefaultDDSketchWithExactSummaryStatistics(0.01)
+				return s
+			},
+			exactSummaryStatistics: true,
+			mergeWith: func(s1, s2 quantileSketch) {
+				s1.(*DDSketchWithExactSummaryStatistics).MergeWith(s2.(*DDSketchWithExactSummaryStatistics))
+			},
+			decode: func(b []byte) (quantileSketch, error) {
+				return DecodeDDSketchWithExactSummaryStatistics(b, store.DenseStoreConstructor, nil)
+			},
+		},
+	}
 )
 
-func EvaluateSketch(t *testing.T, n int, gen dataset.Generator, alpha float64) {
-	sketch, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+func evaluateSketch(t *testing.T, n int, gen dataset.Generator, sketch quantileSketch, testCase testCase) {
 	data := dataset.NewDataset()
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
 		sketch.Add(value)
 		data.Add(value)
 	}
-	AssertSketchesAccurate(t, data, sketch, alpha)
+	assertSketchesAccurate(t, data, sketch, testCase.exactSummaryStatistics)
 	// Add negative numbers
 	for i := 0; i < n; i++ {
 		value := gen.Generate()
 		sketch.Add(-value)
 		data.Add(-value)
 	}
-	AssertSketchesAccurate(t, data, sketch, alpha)
+	assertSketchesAccurate(t, data, sketch, testCase.exactSummaryStatistics)
 
 	// for each store type, serialize / deserialize the sketch into a sketch with that store type, and check that new sketch is still accurate
-	assertDeserializedSketchAccurate(t, sketch, store.DenseStoreConstructor, data, alpha)
-	assertDeserializedSketchAccurate(t, sketch, store.BufferedPaginatedStoreConstructor, data, alpha)
-	assertDeserializedSketchAccurate(t, sketch, store.SparseStoreConstructor, data, alpha)
+	assertDeserializedSketchAccurate(t, sketch, store.DenseStoreConstructor, data, testCase)
+	assertDeserializedSketchAccurate(t, sketch, store.BufferedPaginatedStoreConstructor, data, testCase)
+	assertDeserializedSketchAccurate(t, sketch, store.SparseStoreConstructor, data, testCase)
 }
 
 // makes sure that if we serialize and deserialize a sketch, it will still be accurate
-func assertDeserializedSketchAccurate(t *testing.T, sketch *DDSketch, storeProvider store.Provider, data *dataset.Dataset, alpha float64) {
-	serialized, err := proto.Marshal(sketch.ToProto())
+func assertDeserializedSketchAccurate(t *testing.T, sketch quantileSketch, storeProvider store.Provider, data *dataset.Dataset, testCase testCase) {
+	encoded := &[]byte{}
+	sketch.Encode(encoded, false)
+	decoded, err := testCase.decode(*encoded)
+	assert.Nil(t, err)
+	assertSketchesAccurate(t, data, decoded, testCase.exactSummaryStatistics)
+
+	s, ok := sketch.(*DDSketch)
+	if !ok {
+		return
+	}
+	serialized, err := proto.Marshal(s.ToProto())
 	assert.Nil(t, err)
 	var sketchPb sketchpb.DDSketch
 	err = proto.Unmarshal(serialized, &sketchPb)
 	assert.Nil(t, err)
 	deserializedSketch, err := FromProtoWithStoreProvider(&sketchPb, storeProvider)
 	assert.Nil(t, err)
-	AssertSketchesAccurate(t, data, deserializedSketch, alpha)
-
-	encoded := &[]byte{}
-	sketch.Encode(encoded, false)
-	decoded, err := DecodeDDSketch(*encoded, store.BufferedPaginatedStoreConstructor)
-	assert.Nil(t, err)
-	AssertSketchesAccurate(t, data, decoded, alpha)
+	assertSketchesAccurate(t, data, deserializedSketch, false)
 }
 
-func AssertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch *DDSketch, alpha float64) {
+func assertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch quantileSketch, exactSummaryStatistics bool) {
+	alpha := sketch.RelativeAccuracy()
 	assert := assert.New(t)
 	assert.Equal(data.Count, sketch.GetCount())
 	if data.Count == 0 {
 		assert.True(sketch.IsEmpty())
+		_, minErr := sketch.GetMinValue()
+		_, maxErr := sketch.GetMaxValue()
+		_, quantileErr := sketch.GetValueAtQuantile(0.5)
+		_, quantilesErr := sketch.GetValuesAtQuantiles([]float64{0.1, 0.9})
+		assert.NotNil(minErr)
+		assert.NotNil(maxErr)
+		assert.NotNil(quantileErr)
+		assert.NotNil(quantilesErr)
 	} else {
+		minValue, minErr := sketch.GetMinValue()
+		maxValue, maxErr := sketch.GetMaxValue()
+		assert.Nil(minErr)
+		assert.Nil(maxErr)
+		expectedMinValue := data.Min()
+		expectedMaxValue := data.Max()
+		if exactSummaryStatistics {
+			assert.Equal(expectedMinValue, minValue)
+			assert.Equal(expectedMaxValue, maxValue)
+			assert.InDelta(data.Sum(), sketch.GetSum(), floatingPointAcceptableError)
+		} else {
+			assertRelativelyAccurate(assert, alpha, expectedMinValue, expectedMinValue, minValue)
+			assertRelativelyAccurate(assert, alpha, expectedMaxValue, expectedMaxValue, maxValue)
+		}
 		for _, q := range testQuantiles {
 			lowerQuantile := data.LowerQuantile(q)
 			upperQuantile := data.UpperQuantile(q)
-			minExpectedValue := math.Min(lowerQuantile*(1-alpha), lowerQuantile*(1+alpha))
-			maxExpectedValue := math.Max(upperQuantile*(1-alpha), upperQuantile*(1+alpha))
-			quantile, _ := sketch.GetValueAtQuantile(q)
-			assert.True(quantile >= minExpectedValue-floatingPointAcceptableError)
-			assert.True(quantile <= maxExpectedValue+floatingPointAcceptableError)
+			quantile, quantileErr := sketch.GetValueAtQuantile(q)
+			assert.Nil(quantileErr)
+			assertRelativelyAccurate(assert, alpha, lowerQuantile, upperQuantile, quantile)
+			assert.LessOrEqual(minValue, quantile)
+			assert.GreaterOrEqual(maxValue, quantile)
+			quantiles, quantilesErr := sketch.GetValuesAtQuantiles([]float64{q, q})
+			assert.Nil(quantilesErr)
+			assert.Len(quantiles, 2)
+			assert.Equal(quantile, quantiles[0])
+			assert.Equal(quantile, quantiles[1])
 		}
 	}
 }
 
+func assertRelativelyAccurate(a *assert.Assertions, relativeAccuracy, expectedLowerBound, expectedUpperBound, actual float64) {
+	minExpectedValue := math.Min(expectedLowerBound*(1-relativeAccuracy), expectedLowerBound*(1+relativeAccuracy))
+	maxExpectedValue := math.Max(expectedUpperBound*(1-relativeAccuracy), expectedUpperBound*(1+relativeAccuracy))
+	a.LessOrEqual(minExpectedValue-floatingPointAcceptableError, actual)
+	a.GreaterOrEqual(maxExpectedValue+floatingPointAcceptableError, actual)
+}
+
 func TestConstant(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			constantGenerator := dataset.NewConstant(float64(rand.Int()))
-			EvaluateSketch(t, n, constantGenerator, alpha)
+			evaluateSketch(t, n, constantGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
 
 func TestLinear(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			linearGenerator := dataset.NewLinear()
-			EvaluateSketch(t, n, linearGenerator, alpha)
+			evaluateSketch(t, n, linearGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
 
 func TestNormal(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			normalGenerator := dataset.NewNormal(35, 1)
-			EvaluateSketch(t, n, normalGenerator, alpha)
+			evaluateSketch(t, n, normalGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
 
 func TestLognormal(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			lognormalGenerator := dataset.NewLognormal(0, -2)
-			EvaluateSketch(t, n, lognormalGenerator, alpha)
+			evaluateSketch(t, n, lognormalGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
 
 func TestExponential(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			expGenerator := dataset.NewExponential(1.5)
-			EvaluateSketch(t, n, expGenerator, alpha)
+			evaluateSketch(t, n, expGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
 
 func TestMergeNormal(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			data := dataset.NewDataset()
-			sketch1, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch1 := testCase.sketch()
 			generator1 := dataset.NewNormal(35, 1)
 			for i := 0; i < n; i += 3 {
 				value := generator1.Generate()
 				sketch1.Add(value)
 				data.Add(value)
 			}
-			sketch2, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch2 := testCase.sketch()
 			generator2 := dataset.NewNormal(-10, 2)
 			for i := 1; i < n; i += 3 {
 				value := generator2.Generate()
 				sketch2.Add(value)
 				data.Add(value)
 			}
-			sketch1.MergeWith(sketch2)
+			testCase.mergeWith(sketch1, sketch2)
 
-			sketch3, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch3 := testCase.sketch()
 			generator3 := dataset.NewNormal(40, 0.5)
 			for i := 2; i < n; i += 3 {
 				value := generator3.Generate()
 				sketch3.Add(value)
 				data.Add(value)
 			}
-			sketch1.MergeWith(sketch3)
-			AssertSketchesAccurate(t, data, sketch1, alpha)
+			testCase.mergeWith(sketch1, sketch3)
+			assertSketchesAccurate(t, data, sketch1, testCase.exactSummaryStatistics)
 		}
 	}
 }
 
 func TestMergeEmpty(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			data := dataset.NewDataset()
 			// Merge a non-empty sketch to an empty sketch
-			sketch1, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
-			sketch2, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch1 := testCase.sketch()
+			sketch2 := testCase.sketch()
 			generator := dataset.NewExponential(5)
 			for i := 0; i < n; i++ {
 				value := generator.Generate()
 				sketch2.Add(value)
 				data.Add(value)
 			}
-			sketch1.MergeWith(sketch2)
-			AssertSketchesAccurate(t, data, sketch1, alpha)
+			testCase.mergeWith(sketch1, sketch2)
+			assertSketchesAccurate(t, data, sketch1, testCase.exactSummaryStatistics)
 
 			// Merge an empty sketch to a non-empty sketch
-			sketch3, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
-			sketch2.MergeWith(sketch3)
-			AssertSketchesAccurate(t, data, sketch2, alpha)
+			sketch3 := testCase.sketch()
+			testCase.mergeWith(sketch2, sketch3)
+			assertSketchesAccurate(t, data, sketch2, testCase.exactSummaryStatistics)
 			// Sketch3 should still be empty
 			assert.True(t, sketch3.IsEmpty())
 		}
@@ -196,82 +293,84 @@ func TestMergeEmpty(t *testing.T) {
 }
 
 func TestMergeMixed(t *testing.T) {
-	for _, alpha := range testAlphas {
+	for _, testCase := range testCases {
 		for _, n := range testSizes {
 			data := dataset.NewDataset()
-			sketch1, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch1 := testCase.sketch()
 			generator1 := dataset.NewNormal(100, 1)
 			for i := 0; i < n; i += 3 {
 				value := generator1.Generate()
 				sketch1.Add(value)
 				data.Add(value)
 			}
-			sketch2, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch2 := testCase.sketch()
 			generator2 := dataset.NewExponential(5)
 			for i := 1; i < n; i += 3 {
 				value := generator2.Generate()
 				sketch2.Add(value)
 				data.Add(value)
 			}
-			sketch1.MergeWith(sketch2)
+			testCase.mergeWith(sketch1, sketch2)
 
-			sketch3, _ := LogCollapsingLowestDenseDDSketch(alpha, testMaxBins)
+			sketch3 := testCase.sketch()
 			generator3 := dataset.NewExponential(0.1)
 			for i := 2; i < n; i += 3 {
 				value := generator3.Generate()
 				sketch3.Add(value)
 				data.Add(value)
 			}
-			sketch1.MergeWith(sketch3)
+			testCase.mergeWith(sketch1, sketch3)
 
-			AssertSketchesAccurate(t, data, sketch1, alpha)
+			assertSketchesAccurate(t, data, sketch1, testCase.exactSummaryStatistics)
 		}
 	}
 }
 
 // Test that successive Quantile() calls do not modify the sketch
 func TestConsistentQuantile(t *testing.T) {
-	var vals []float64
-	var q float64
-	nTests := 200
-	testAlpha := 0.01
-	vfuzzer := fuzz.New().NilChance(0).NumElements(10, 500)
-	fuzzer := fuzz.New()
-	for i := 0; i < nTests; i++ {
-		sketch, _ := LogCollapsingLowestDenseDDSketch(testAlpha, testMaxBins)
-		vfuzzer.Fuzz(&vals)
-		fuzzer.Fuzz(&q)
-		for _, v := range vals {
-			sketch.Add(v)
+	for _, testCase := range testCases {
+		var vals []float64
+		var q float64
+		nTests := 200
+		vfuzzer := fuzz.New().NilChance(0).NumElements(10, 500)
+		fuzzer := fuzz.New()
+		for i := 0; i < nTests; i++ {
+			sketch := testCase.sketch()
+			vfuzzer.Fuzz(&vals)
+			fuzzer.Fuzz(&q)
+			for _, v := range vals {
+				sketch.Add(v)
+			}
+			q1, _ := sketch.GetValueAtQuantile(q)
+			q2, _ := sketch.GetValueAtQuantile(q)
+			assert.Equal(t, q1, q2)
 		}
-		q1, _ := sketch.GetValueAtQuantile(q)
-		q2, _ := sketch.GetValueAtQuantile(q)
-		assert.Equal(t, q1, q2)
 	}
 }
 
 // Test that MergeWith() calls do not modify the argument sketch
 func TestConsistentMerge(t *testing.T) {
-	var vals []float64
-	nTests := 10
-	testAlpha := 0.01
-	testSize := 1000
-	fuzzer := fuzz.New().NilChance(0).NumElements(10, 1000)
-	sketch1, _ := LogCollapsingLowestDenseDDSketch(testAlpha, testMaxBins)
-	generator := dataset.NewNormal(50, 1)
-	for i := 0; i < testSize; i++ {
-		sketch1.Add(generator.Generate())
-	}
-	for i := 0; i < nTests; i++ {
-		sketch2, _ := LogCollapsingLowestDenseDDSketch(testAlpha, testMaxBins)
-		fuzzer.Fuzz(&vals)
-		for _, v := range vals {
-			sketch2.Add(v)
+	for _, testCase := range testCases {
+		var vals []float64
+		nTests := 10
+		testSize := 1000
+		fuzzer := fuzz.New().NilChance(0).NumElements(10, 1000)
+		sketch1 := testCase.sketch()
+		generator := dataset.NewNormal(50, 1)
+		for i := 0; i < testSize; i++ {
+			sketch1.Add(generator.Generate())
 		}
-		quantilesBeforeMerge, _ := sketch2.GetValuesAtQuantiles(testQuantiles)
-		sketch1.MergeWith(sketch2)
-		quantilesAfterMerge, _ := sketch2.GetValuesAtQuantiles(testQuantiles)
-		assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
+		for i := 0; i < nTests; i++ {
+			sketch2 := testCase.sketch()
+			fuzzer.Fuzz(&vals)
+			for _, v := range vals {
+				sketch2.Add(v)
+			}
+			quantilesBeforeMerge, _ := sketch2.GetValuesAtQuantiles(testQuantiles)
+			testCase.mergeWith(sketch1, sketch2)
+			quantilesAfterMerge, _ := sketch2.GetValuesAtQuantiles(testQuantiles)
+			assert.InDeltaSlice(t, quantilesBeforeMerge, quantilesAfterMerge, floatingPointAcceptableError)
+		}
 	}
 }
 func TestCopy(t *testing.T) {
@@ -365,18 +464,18 @@ func TestDecodingErrors(t *testing.T) {
 	mapping2, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.04, 0)
 	storeProvider := store.BufferedPaginatedStoreConstructor
 	{
-		decoded, err := DecodeDDSketchWithIndexMapping([]byte{}, storeProvider, mapping1)
+		decoded, err := DecodeDDSketch([]byte{}, storeProvider, mapping1)
 		assert.Nil(t, err)
 		assert.True(t, decoded.IsEmpty())
 	}
 	{
-		_, err := DecodeDDSketch([]byte{}, storeProvider)
+		_, err := DecodeDDSketch([]byte{}, storeProvider, nil)
 		assert.Error(t, err)
 	}
 	{
 		encoded := &[]byte{}
 		mapping2.Encode(encoded)
-		_, err := DecodeDDSketch(*encoded, storeProvider)
+		_, err := DecodeDDSketch(*encoded, storeProvider, nil)
 		assert.Nil(t, err)
 	}
 	{
@@ -391,6 +490,23 @@ func TestDecodingErrors(t *testing.T) {
 		mapping2.Encode(encoded)
 		err := sketch.DecodeAndMergeWith(*encoded)
 		assert.Error(t, err)
+	}
+	{ // with exact summary statistics -> without exact summary statistics (valid)
+		sketch := NewDDSketchWithExactSummaryStatistics(mapping1, storeProvider)
+		sketch.Add(0)
+		encoded := &[]byte{}
+		sketch.Encode(encoded, false)
+		decoded, err := DecodeDDSketchWithExactSummaryStatistics(*encoded, storeProvider, nil)
+		assert.Nil(t, err)
+		assert.Equal(t, 1.0, decoded.GetCount())
+	}
+	{ // without exact summary statistics -> with exact summary statistics (error)
+		sketch := NewDDSketchFromStoreProvider(mapping1, storeProvider)
+		sketch.Add(0)
+		encoded := &[]byte{}
+		sketch.Encode(encoded, false)
+		_, err := DecodeDDSketchWithExactSummaryStatistics(*encoded, storeProvider, nil)
+		assert.NotNil(t, err)
 	}
 }
 
@@ -401,7 +517,7 @@ type sketchDataTestCase struct {
 
 var (
 	indexMapping, _ = mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
-	testCases       = []sketchDataTestCase{
+	dataTestCases   = []sketchDataTestCase{
 		{
 			name: "dense/empty",
 			sketch: func() *DDSketch {
@@ -534,7 +650,7 @@ var (
 
 func TestBenchmarkEncodedSize(t *testing.T) {
 	t.Logf("%-45s %6s %6s %17s\n", "test case", "proto", "custom", "custom_no_mapping")
-	for _, testCase := range testCases {
+	for _, testCase := range dataTestCases {
 		sketch := testCase.sketch()
 		encoded := make([]byte, 0)
 		sketch.Encode(&encoded, false)
@@ -603,7 +719,7 @@ func TestSerDeser(t *testing.T) {
 		store.DenseStoreConstructor,
 		store.SparseStoreConstructor,
 	}
-	for _, testCase := range testCases {
+	for _, testCase := range dataTestCases {
 		sketch := testCase.sketch()
 		for _, serTestCase := range serTestCases {
 			var serialized []byte
@@ -667,7 +783,7 @@ var (
 )
 
 func BenchmarkEncode(b *testing.B) {
-	for _, testCase := range testCases {
+	for _, testCase := range dataTestCases {
 		b.Run(testCase.name, func(b *testing.B) {
 			sketch := testCase.sketch()
 			for _, sTestCase := range serTestCases {
@@ -683,7 +799,7 @@ func BenchmarkEncode(b *testing.B) {
 }
 
 func BenchmarkDecode(b *testing.B) {
-	for _, testCase := range testCases {
+	for _, testCase := range dataTestCases {
 		b.Run(testCase.name, func(b *testing.B) {
 			sketch := testCase.sketch()
 			for _, sTestCase := range serTestCases {

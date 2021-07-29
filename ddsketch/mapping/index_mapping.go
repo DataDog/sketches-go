@@ -31,6 +31,10 @@ type IndexMapping interface {
 	Encode(b *[]byte)
 }
 
+func NewDefaultMapping(relativeAccuracy float64) (IndexMapping, error) {
+	return NewCubicallyInterpolatedMapping(relativeAccuracy)
+}
+
 // FromProto returns an Index mapping from the protobuf definition of it
 func FromProto(m *sketchpb.IndexMapping) (IndexMapping, error) {
 	switch m.Interpolation {
