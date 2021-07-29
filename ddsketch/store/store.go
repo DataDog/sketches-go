@@ -132,13 +132,17 @@ func DecodeAndMergeWith(s Store, b *[]byte, binEncodingMode enc.SubFlag) error {
 		if err != nil {
 			return err
 		}
+		indexDelta, err := enc.DecodeVarint64(b)
+		if err != nil {
+			return err
+		}
 		for i := uint64(0); i < numBins; i++ {
 			count, err := enc.DecodeVarfloat64(b)
 			if err != nil {
 				return err
 			}
 			s.AddWithCount(int(index), count)
-			index++
+			index += indexDelta
 		}
 
 	default:

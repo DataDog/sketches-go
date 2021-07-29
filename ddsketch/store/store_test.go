@@ -421,12 +421,12 @@ func normalize(bins []Bin) []Bin {
 		}
 		binsByIndex[bin.index] += bin.count
 	}
-	bins = bins[:0]
+	normalizedBins := make([]Bin, 0, len(bins))
 	for index, count := range binsByIndex {
-		bins = append(bins, Bin{index: index, count: count})
+		normalizedBins = append(normalizedBins, Bin{index: index, count: count})
 	}
-	sort.Slice(bins, func(i, j int) bool { return bins[i].index < bins[j].index })
-	return bins
+	sort.Slice(normalizedBins, func(i, j int) bool { return normalizedBins[i].index < normalizedBins[j].index })
+	return normalizedBins
 }
 
 func EvaluateValues(t *testing.T, store *DenseStore, values []int, collapsingLowest bool, collapsingHighest bool) {
@@ -961,35 +961,44 @@ func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
 	}
 }
 
-func TestBufferedPaginatedDecode(t *testing.T) {
-	storeFlagType := enc.FlagTypePositiveStore
-	b := &[]byte{}
-	bins := []Bin{}
+func TestDecode(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			storeFlagType := enc.FlagTypePositiveStore
+			b := &[]byte{}
+			bins := []Bin{}
 
-	numBufferEncodedIndexes := 1000
-	enc.EncodeFlag(b, enc.NewFlag(storeFlagType, enc.BinEncodingIndexDeltas))
-	enc.EncodeUvarint64(b, uint64(numBufferEncodedIndexes))
-	enc.EncodeVarint64(b, 0)
-	bins = append(bins, Bin{index: 0, count: 1})
-	for index := 1; index < numBufferEncodedIndexes; index++ {
-		enc.EncodeVarint64(b, 1)
-		bins = append(bins, Bin{index: index, count: 1})
+			numBufferEncodedIndexes := 1000
+			enc.EncodeFlag(b, enc.NewFlag(storeFlagType, enc.BinEncodingIndexDeltas))
+			enc.EncodeUvarint64(b, uint64(numBufferEncodedIndexes))
+			enc.EncodeVarint64(b, 0)
+			bins = append(bins, Bin{index: 0, count: 1})
+			for index := 1; index < numBufferEncodedIndexes; index++ {
+				enc.EncodeVarint64(b, 1)
+				bins = append(bins, Bin{index: index, count: 1})
+			}
+
+			minPageEncodedIndex := 39
+			len := 147
+			for _, indexDelta := range []int{-37, -3, -2, -1, 1, 2, 3, 37} {
+				enc.EncodeFlag(b, enc.NewFlag(storeFlagType, enc.BinEncodingContiguousCounts))
+				enc.EncodeUvarint64(b, uint64(len))
+				enc.EncodeVarint64(b, int64(minPageEncodedIndex))
+				enc.EncodeVarint64(b, int64(indexDelta))
+				index := minPageEncodedIndex
+				for i := 0; i < len; i++ {
+					count := 1.5
+					enc.EncodeVarfloat64(b, count)
+					bins = append(bins, Bin{index: index, count: count})
+					index += indexDelta
+				}
+
+				decoded := NewBufferedPaginatedStore()
+				decodeBins(t, decoded, *b)
+				assertEncodeBins(t, decoded, normalize(bins))
+			}
+		})
 	}
-
-	minPageEncodedIndex := 39
-	maxPageEncodedIndex := 147
-	enc.EncodeFlag(b, enc.NewFlag(storeFlagType, enc.BinEncodingContiguousCounts))
-	enc.EncodeUvarint64(b, uint64(maxPageEncodedIndex-minPageEncodedIndex)+1)
-	enc.EncodeVarint64(b, int64(minPageEncodedIndex))
-	for index := minPageEncodedIndex; index <= maxPageEncodedIndex; index++ {
-		count := 1.5
-		enc.EncodeVarfloat64(b, count)
-		bins = append(bins, Bin{index: index, count: count})
-	}
-
-	decoded := NewBufferedPaginatedStore()
-	decodeBins(t, decoded, *b)
-	assertEncodeBins(t, decoded, normalize(bins))
 }
 
 // Benchmarks
