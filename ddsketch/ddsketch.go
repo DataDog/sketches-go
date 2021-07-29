@@ -212,15 +212,15 @@ func (s *DDSketch) ForEach(f func(value, count float64) (stop bool)) {
 		return
 	}
 	stopped := false
-	s.positiveValueStore.ForEach(func(b store.Bin) bool {
-		stopped = f(s.IndexMapping.Value(b.Index()), b.Count())
+	s.positiveValueStore.ForEach(func(index int, count float64) bool {
+		stopped = f(s.IndexMapping.Value(index), count)
 		return stopped
 	})
 	if stopped {
 		return
 	}
-	s.negativeValueStore.ForEach(func(b store.Bin) bool {
-		return f(-s.IndexMapping.Value(b.Index()), b.Count())
+	s.negativeValueStore.ForEach(func(index int, count float64) bool {
+		return f(-s.IndexMapping.Value(index), count)
 	})
 }
 
@@ -388,9 +388,9 @@ func (s *DDSketch) ChangeMapping(newMapping mapping.IndexMapping, positiveStore 
 }
 
 func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, newStore store.Store, scaleFactor float64) {
-	oldStore.ForEach(func(bin store.Bin) (stop bool) {
-		inLowerBound := oldMapping.LowerBound(bin.Index()) * scaleFactor
-		inHigherBound := oldMapping.LowerBound(bin.Index()+1) * scaleFactor
+	oldStore.ForEach(func(index int, count float64) (stop bool) {
+		inLowerBound := oldMapping.LowerBound(index) * scaleFactor
+		inHigherBound := oldMapping.LowerBound(index+1) * scaleFactor
 		inSize := inHigherBound - inLowerBound
 		for outIndex := newMapping.Index(inLowerBound); newMapping.LowerBound(outIndex) < inHigherBound; outIndex++ {
 			outLowerBound := newMapping.LowerBound(outIndex)
@@ -399,7 +399,7 @@ func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, n
 			higherIntersectionBound := math.Min(outHigherBound, inHigherBound)
 			intersectionSize := higherIntersectionBound - lowerIntersectionBound
 			proportion := intersectionSize / inSize
-			newStore.AddWithCount(outIndex, proportion*bin.Count())
+			newStore.AddWithCount(outIndex, proportion*count)
 		}
 		return false
 	})

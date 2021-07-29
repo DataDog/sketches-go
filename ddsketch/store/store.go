@@ -38,7 +38,7 @@ type Store interface {
 	// Note that this leaks a channel and a goroutine if it is not iterated to completion.
 	Bins() <-chan Bin
 	// ForEach applies f to all elements of the store or until f returns true.
-	ForEach(f func(b Bin) (stop bool))
+	ForEach(f func(index int, count float64) (stop bool))
 	Copy() Store
 	// Clear empties the store while allowing reusing already allocated memory.
 	// In some situations, it may be advantageous to clear and reuse a store

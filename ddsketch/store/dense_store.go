@@ -197,10 +197,10 @@ func (s *DenseStore) Bins() <-chan Bin {
 	return ch
 }
 
-func (s *DenseStore) ForEach(f func(b Bin) (stop bool)) {
+func (s *DenseStore) ForEach(f func(index int, count float64) (stop bool)) {
 	for idx := s.minIndex; idx <= s.maxIndex; idx++ {
 		if s.bins[idx-s.offset] > 0 {
-			if f(Bin{index: idx, count: s.bins[idx-s.offset]}) {
+			if f(idx, s.bins[idx-s.offset]) {
 				return
 			}
 		}
