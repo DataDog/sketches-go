@@ -999,8 +999,8 @@ func TestBufferPaginatedStoreSerialization(t *testing.T) {
 		assertStoreBinsLogicallyEquivalent(t, store, deserializedStore)
 
 		// clear fields that are allowed to differ and assert all other fields are equal
-		store.buffer = []int{}
-		deserializedStore.buffer = []int{}
+		store.buffer = newBuffer(store.memory)
+		deserializedStore.buffer = newBuffer(store.memory)
 		store.pages = [][]float64{}
 		deserializedStore.pages = [][]float64{}
 		store.minPageIndex = 0
@@ -1027,7 +1027,7 @@ func TestBufferedPaginatedCompactionDensity(t *testing.T) {
 			}
 		}
 		store.compact()
-		assert.Zero(t, len(store.buffer))
+		assert.True(t, store.buffer.empty())
 	}
 }
 
@@ -1050,7 +1050,7 @@ func TestBufferedPaginatedCompactionOutliers(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		store.Add(6377)
 	}
-	assert.Equal(t, 4, len(store.buffer))
+	assert.Equal(t, 4, store.buffer.Len())
 }
 
 func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
@@ -1222,7 +1222,11 @@ func size(t *testing.T, store Store) uintptr {
 		return 0
 	} else if s, ok := store.(*BufferedPaginatedStore); ok {
 		size := reflect.TypeOf(s).Elem().Size()
-		size += uintptr(cap(s.buffer)) * reflect.TypeOf(s.buffer).Elem().Size()
+		size += reflect.TypeOf(s.buffer).Elem().Size()
+		size += uintptr(cap(s.buffer.pages)) * reflect.TypeOf(s.buffer.pages).Elem().Size()
+		for _, page := range s.buffer.pages {
+			size += uintptr(cap(page)) * reflect.TypeOf(page).Elem().Size()
+		}
 		size += uintptr(cap(s.pages)) * reflect.TypeOf(s.pages).Elem().Size()
 		for _, page := range s.pages {
 			size += uintptr(cap(page)) * reflect.TypeOf(page).Elem().Size()

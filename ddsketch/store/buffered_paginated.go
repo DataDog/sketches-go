@@ -8,7 +8,6 @@ package store
 import (
 	"errors"
 	"reflect"
-	"sort"
 	"unsafe"
 
 	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
@@ -52,8 +51,8 @@ var errUnverifiedPredicate = errors.New("the predicate on the cumulative count i
 // indexes are added (with their counts equal to 1), when the input data has a
 // few outliers or when the input data distribution is multimodal.
 type BufferedPaginatedStore struct {
-	buffer                     []int // FIXME: in practice, int32 (even int16, depending on the accuracy parameter) is enough
-	bufferCompactionTriggerLen int   // compaction happens only after this buffer length is reached
+	buffer                  buffer
+	lastCompactionBufferLen int
 
 	pages        [][]float64
 	minPageIndex int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
@@ -64,18 +63,19 @@ type BufferedPaginatedStore struct {
 }
 
 func NewBufferedPaginatedStore() *BufferedPaginatedStore {
-	initialBufferCapacity := 4
 	pageSizeLog2 := defaultPageSizeLog2
 	pageLenLog2 := pageSizeLog2 - countSizeLog2
 
+	memory := newUnlimitedMemoryPool(pageSizeLog2)
+
 	return &BufferedPaginatedStore{
-		buffer:                     make([]int, 0, initialBufferCapacity),
-		bufferCompactionTriggerLen: 2 * (1 << pageLenLog2),
-		pages:                      nil,
-		minPageIndex:               maxInt,
-		pageLenLog2:                pageLenLog2,
-		pageLenMask:                (1 << pageLenLog2) - 1,
-		memory:                     newUnlimitedMemoryPool(pageSizeLog2),
+		buffer:                  newBuffer(memory),
+		lastCompactionBufferLen: 0,
+		pages:                   nil,
+		minPageIndex:            maxInt,
+		pageLenLog2:             pageLenLog2,
+		pageLenMask:             1<<pageLenLog2 - 1,
+		memory:                  memory,
 	}
 }
 
@@ -160,46 +160,25 @@ func sliceCap(len int) int {
 	return (len + increment - 1) & -increment
 }
 
-// compact transfers indexes from the buffer to the pages. It only creates new
-// pages if they can encode enough buffered indexes so that it frees more space
-// in the buffer than the new page takes.
 func (s *BufferedPaginatedStore) compact() {
-	pageLen := 1 << s.pageLenLog2
-
-	s.sortBuffer()
-
-	for bufferPos := 0; bufferPos < len(s.buffer); {
-		bufferPageStart := bufferPos
-		pageIndex := s.pageIndex(s.buffer[bufferPageStart])
-		bufferPos++
-		for bufferPos < len(s.buffer) && s.pageIndex(s.buffer[bufferPos]) == pageIndex {
-			bufferPos++
-		}
-		bufferPageEnd := bufferPos
-
+	s.buffer.compact(s.pageIndex, func(countPageIndex, sizeInBuffer int) func(int) {
 		// We avoid creating a new page if it would take more memory space than
 		// what we would free in the buffer. Note that even when the page itself
 		// takes less memory space than the buffered indexes that can be encoded
 		// in the page, because we may have to extend s.pages, the store may end
 		// up larger. However, for the sake of simplicity, we ignore the length
 		// of s.pages.
-		ensureExists := (bufferPageEnd-bufferPageStart)<<bufferEntrySizeLog2 >= pageLen<<countSizeLog2
-		newPage := s.page(pageIndex, ensureExists)
-		if newPage != nil {
-			for _, index := range s.buffer[bufferPageStart:bufferPageEnd] {
-				newPage[s.lineIndex(index)]++
+		ensureExists := (1<<s.pageLenLog2)<<countSizeLog2 <= sizeInBuffer
+		page := s.page(countPageIndex, ensureExists)
+		if page == nil {
+			return nil
+		} else {
+			return func(i int) {
+				page[s.lineIndex(i)]++
 			}
-			copy(s.buffer[bufferPageStart:], s.buffer[bufferPageEnd:])
-			s.buffer = s.buffer[:len(s.buffer)+bufferPageStart-bufferPageEnd]
-			bufferPos = bufferPageStart
 		}
-	}
-
-	s.bufferCompactionTriggerLen = len(s.buffer) + pageLen
-}
-
-func (s *BufferedPaginatedStore) sortBuffer() {
-	sort.Slice(s.buffer, func(i, j int) bool { return s.buffer[i] < s.buffer[j] })
+	})
+	s.lastCompactionBufferLen = s.buffer.Len()
 }
 
 func (s *BufferedPaginatedStore) Add(index int) {
@@ -210,11 +189,20 @@ func (s *BufferedPaginatedStore) Add(index int) {
 	}
 
 	// The page does not exist, use the buffer.
-	if len(s.buffer) == cap(s.buffer) && len(s.buffer) >= s.bufferCompactionTriggerLen {
+	if s.buffer.tryAdding(index) {
+		return
+	}
+
+	if s.buffer.Len() >= s.lastCompactionBufferLen+2*(1<<s.buffer.pageLenLog2) {
 		s.compact()
 	}
 
-	s.buffer = append(s.buffer, index)
+	if page := s.existingPage(s.pageIndex(index)); page != nil {
+		page[s.lineIndex(index)]++
+		return
+	}
+
+	s.buffer.add(index)
 }
 
 func (s *BufferedPaginatedStore) AddBin(bin Bin) {
@@ -232,7 +220,7 @@ func (s *BufferedPaginatedStore) AddWithCount(index int, count float64) {
 }
 
 func (s *BufferedPaginatedStore) IsEmpty() bool {
-	if len(s.buffer) > 0 {
+	if !s.buffer.empty() {
 		return false
 	}
 	for _, page := range s.pages {
@@ -246,7 +234,7 @@ func (s *BufferedPaginatedStore) IsEmpty() bool {
 }
 
 func (s *BufferedPaginatedStore) TotalCount() float64 {
-	totalCount := float64(len(s.buffer))
+	totalCount := float64(s.buffer.Len())
 	for _, page := range s.pages {
 		for _, count := range page {
 			totalCount += count
@@ -273,6 +261,7 @@ func (s *BufferedPaginatedStore) MaxIndex() (maxIndex int, err error) {
 		return true
 	}, true)
 	return
+
 }
 
 func (s *BufferedPaginatedStore) KeyAtRank(rank float64) int {
@@ -314,25 +303,22 @@ func (s *BufferedPaginatedStore) minIndexWithCumulCount(predicate func(float64) 
 }
 
 func (s *BufferedPaginatedStore) MergeWith(other Store) {
-	o, ok := other.(*BufferedPaginatedStore)
-	if ok && len(o.pages) == 0 {
-		// Optimized merging if the other store only has buffered data.
-		oBufferOffset := 0
-		for {
-			bufferCapOverhead := max(cap(s.buffer), s.bufferCompactionTriggerLen) - len(s.buffer)
-			if bufferCapOverhead >= len(o.buffer)-oBufferOffset {
-				s.buffer = append(s.buffer, o.buffer[oBufferOffset:]...)
-				return
+	if o, ok := other.(*BufferedPaginatedStore); ok {
+		o.buffer.forEach(func(oIndex int) (stop bool) {
+			s.Add(oIndex)
+			return false
+		})
+		for oPageOffset, oPage := range o.pages {
+			sPage := s.page(o.minPageIndex+oPageOffset, true)
+			for lineIndex := range oPage {
+				sPage[lineIndex] += oPage[lineIndex]
 			}
-			s.buffer = append(s.buffer, o.buffer[oBufferOffset:oBufferOffset+bufferCapOverhead]...)
-			oBufferOffset += bufferCapOverhead
-			s.compact()
 		}
-	}
-
-	// Fallback merging.
-	for bin := range other.Bins() {
-		s.AddBin(bin)
+	} else {
+		other.ForEach(func(index int, count float64) (stop bool) {
+			s.AddWithCount(index, count)
+			return false
+		})
 	}
 }
 
@@ -346,11 +332,12 @@ func (s *BufferedPaginatedStore) MergeWithProto(pb *sketchpb.Store) {
 }
 
 func (s *BufferedPaginatedStore) Bins() <-chan Bin {
-	s.sortBuffer()
+	s.buffer.sort()
+	bufferIt := s.buffer.iterator(false)
+	bufferNext := bufferIt.next()
 	ch := make(chan Bin)
 	go func() {
 		defer close(ch)
-		bufferPos := 0
 
 		// Iterate over the pages and the buffer simultaneously.
 		for pageOffset, page := range s.pages {
@@ -362,34 +349,29 @@ func (s *BufferedPaginatedStore) Bins() <-chan Bin {
 				index := s.index(s.minPageIndex+pageOffset, lineIndex)
 
 				// Iterate over the buffer until index is reached.
-				var indexBufferStartPos int
+				var bufferCount int
 				for {
-					indexBufferStartPos = bufferPos
-					if indexBufferStartPos >= len(s.buffer) || s.buffer[indexBufferStartPos] > index {
+					if bufferNext == nil || *bufferNext > index {
 						break
 					}
-					bufferPos++
-					for bufferPos < len(s.buffer) && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
-						bufferPos++
-					}
-					if s.buffer[indexBufferStartPos] == index {
+					bufferIndex := *bufferNext
+					bufferNext, bufferCount = bufferIt.nextVerifies(func(i int) bool { return i != bufferIndex })
+					if bufferIndex == index {
 						break
 					}
-					ch <- Bin{index: s.buffer[indexBufferStartPos], count: float64(bufferPos - indexBufferStartPos)}
+					ch <- Bin{index: bufferIndex, count: float64(bufferCount)}
+					bufferCount = 0
 				}
-				ch <- Bin{index: index, count: count + float64(bufferPos-indexBufferStartPos)}
+				ch <- Bin{index: index, count: count + float64(bufferCount)}
 			}
 		}
 
 		// Iterate over the rest of the buffer.
-		for bufferPos < len(s.buffer) {
-			indexBufferStartPos := bufferPos
-			bufferPos++
-			for bufferPos < len(s.buffer) && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
-				bufferPos++
-			}
-			bin := Bin{index: s.buffer[indexBufferStartPos], count: float64(bufferPos - indexBufferStartPos)}
-			ch <- bin
+		for bufferNext != nil {
+			bufferIndex := *bufferNext
+			var bufferCount int
+			bufferNext, bufferCount = bufferIt.nextVerifies(func(i int) bool { return i != bufferIndex })
+			ch <- Bin{index: bufferIndex, count: float64(bufferCount)}
 		}
 	}()
 	return ch
@@ -400,16 +382,17 @@ func (s *BufferedPaginatedStore) ForEach(f func(index int, count float64) (stop 
 }
 
 func (s *BufferedPaginatedStore) forEachOrdered(f func(index int, count float64) (stop bool), descending bool) {
-	s.sortBuffer()
+	s.buffer.sort()
+	bufferIt := s.buffer.iterator(descending)
+	bufferItNext := bufferIt.next()
+
 	inc := 1
 	pageOffsetFrom, pageOffsetTo := 0, len(s.pages)
 	lineIndexFrom, lineIndexTo := 0, 1<<s.pageLenLog2
-	bufferPos, bufferPosTo := 0, len(s.buffer)
 	if descending {
 		inc *= -1
 		pageOffsetFrom, pageOffsetTo = pageOffsetTo-1, pageOffsetFrom-1
 		lineIndexFrom, lineIndexTo = lineIndexTo-1, lineIndexFrom-1
-		bufferPos, bufferPosTo = bufferPosTo-1, bufferPos-1
 	}
 
 	// Iterate over the pages and the buffer simultaneously.
@@ -427,46 +410,39 @@ func (s *BufferedPaginatedStore) forEachOrdered(f func(index int, count float64)
 			index := s.index(s.minPageIndex+pageOffset, lineIndex)
 
 			// Iterate over the buffer until index is reached.
-			var indexBufferStartPos int
+			var bufferCount int
 			for {
-				indexBufferStartPos = bufferPos
-				if indexBufferStartPos == bufferPosTo || s.buffer[indexBufferStartPos]*inc > index*inc {
+				if bufferItNext == nil || *bufferItNext*inc > index*inc {
 					break
 				}
-				bufferPos += inc
-				for bufferPos != bufferPosTo && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
-					bufferPos += inc
-				}
-				if s.buffer[indexBufferStartPos] == index {
+				bufferIndex := *bufferItNext
+				bufferItNext, bufferCount = bufferIt.nextVerifies(func(i int) bool { return i != bufferIndex })
+				if bufferIndex == index {
 					break
 				}
-				if f(s.buffer[indexBufferStartPos], float64((bufferPos-indexBufferStartPos)*inc)) {
+				if f(bufferIndex, float64(bufferCount)) {
 					return
 				}
+				bufferCount = 0
 			}
-			if f(index, count+float64((bufferPos-indexBufferStartPos)*inc)) {
+			if f(index, count+float64(bufferCount)) {
 				return
 			}
 		}
 	}
 
 	// Iterate over the rest of the buffer.
-	for bufferPos != bufferPosTo {
-		indexBufferStartPos := bufferPos
-		bufferPos += inc
-		for bufferPos != bufferPosTo && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
-			bufferPos += inc
-		}
-		if f(s.buffer[indexBufferStartPos], float64((bufferPos-indexBufferStartPos)*inc)) {
+	for bufferItNext != nil {
+		bufferIndex := *bufferItNext
+		var bufferCount int
+		bufferItNext, bufferCount = bufferIt.nextVerifies(func(i int) bool { return i != bufferIndex })
+		if f(bufferIndex, float64(bufferCount)) {
 			return
 		}
 	}
 }
 
 func (s *BufferedPaginatedStore) Copy() Store {
-	bufferCopy := make([]int, len(s.buffer))
-	copy(bufferCopy, s.buffer)
-
 	pagesCopy := make([][]float64, len(s.pages), sliceCap(len(s.pages)))
 	for i, page := range s.pages {
 		if page != nil {
@@ -476,18 +452,18 @@ func (s *BufferedPaginatedStore) Copy() Store {
 		}
 	}
 	return &BufferedPaginatedStore{
-		buffer:                     bufferCopy,
-		bufferCompactionTriggerLen: s.bufferCompactionTriggerLen,
-		pages:                      pagesCopy,
-		minPageIndex:               s.minPageIndex,
-		pageLenLog2:                s.pageLenLog2,
-		pageLenMask:                s.pageLenMask,
-		memory:                     s.memory,
+		buffer:                  s.buffer.copy(),
+		lastCompactionBufferLen: s.lastCompactionBufferLen,
+		pages:                   pagesCopy,
+		minPageIndex:            s.minPageIndex,
+		pageLenLog2:             s.pageLenLog2,
+		pageLenMask:             s.pageLenMask,
+		memory:                  s.memory,
 	}
 }
 
 func (s *BufferedPaginatedStore) Clear() {
-	s.buffer = s.buffer[:0]
+	s.buffer.trim(0)
 	// Give pages back to the memory pool.
 	for i, page := range s.pages {
 		if page != nil {
@@ -521,28 +497,30 @@ func (s *BufferedPaginatedStore) Reweight(w float64) error {
 	if w == 1 {
 		return nil
 	}
-	buffer := s.buffer
-	s.buffer = s.buffer[:0]
 	for _, p := range s.pages {
 		for i := range p {
 			p[i] *= w
 		}
 	}
-	for _, index := range buffer {
+	s.buffer.forEach(func(index int) (stop bool) {
+		// Does not affect the buffer because w != 1.
 		s.AddWithCount(index, w)
-	}
+		return false
+	})
+	s.buffer.trim(0)
 	return nil
 }
 
 func (s *BufferedPaginatedStore) Encode(b *[]byte, t enc.FlagType) {
-	if len(s.buffer) > 0 {
+	if s.buffer.Len() > 0 {
 		enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingIndexDeltas))
-		enc.EncodeUvarint64(b, uint64(len(s.buffer)))
+		enc.EncodeUvarint64(b, uint64(s.buffer.Len()))
 		previousIndex := 0
-		for _, index := range s.buffer {
+		s.buffer.forEach(func(index int) (stop bool) {
 			enc.EncodeVarint64(b, int64(index-previousIndex))
 			previousIndex = index
-		}
+			return false
+		})
 	}
 
 	for pageOffset, page := range s.pages {
@@ -568,24 +546,15 @@ func (s *BufferedPaginatedStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.
 		}
 		remaining := int(numBins)
 		index := int64(0)
-		// Process indexes in batches to avoid checking after each insertion
-		// whether compaction should happen.
-		for {
-			batchSize := min(remaining, max(cap(s.buffer), s.bufferCompactionTriggerLen)-len(s.buffer))
-			for i := 0; i < batchSize; i++ {
-				indexDelta, err := enc.DecodeVarint64(b)
-				if err != nil {
-					return err
-				}
-				index += indexDelta
-				s.buffer = append(s.buffer, int(index))
+		for ; remaining > 0; remaining-- {
+			indexDelta, err := enc.DecodeVarint64(b)
+			if err != nil {
+				return err
 			}
-			remaining -= batchSize
-			if remaining == 0 {
-				return nil
-			}
-			s.compact()
+			index += indexDelta
+			s.Add(int(index))
 		}
+		return nil
 
 	case enc.BinEncodingContiguousCounts:
 		numBins, err := enc.DecodeUvarint64(b)
