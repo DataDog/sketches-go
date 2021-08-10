@@ -1077,6 +1077,46 @@ func TestBufferedPaginatedMergeWithProtoFuzzy(t *testing.T) {
 	}
 }
 
+func TestBufferedPaginatedCompression(t *testing.T) {
+	store := NewBufferedPaginatedStore()
+	n := 1024
+	for index := 0; index < n; index++ {
+		store.AddWithCount(index, 0.9)
+	}
+	store.Add(-999) // encoded in the buffer
+
+	bins := make([]Bin, 0, n+1)
+	bins = append(bins, Bin{index: -999, count: 1})
+	for index := 0; index < n; index++ {
+		bins = append(bins, Bin{index: index, count: 0.9})
+	}
+	assertEncodeBins(t, store, bins)
+
+	store.compress()
+	bins = bins[:0]
+	bins = append(bins, Bin{index: -999, count: 1})
+	for index := 0; index < n; index += 2 {
+		bins = append(bins, Bin{index: index, count: 0.9 * 2})
+	}
+	assertEncodeBins(t, store, bins)
+
+	store.compress()
+	bins = bins[:0]
+	bins = append(bins, Bin{index: -999, count: 1})
+	for index := 0; index < n; index += 4 {
+		bins = append(bins, Bin{index: index, count: 0.9 * 4})
+	}
+	assertEncodeBins(t, store, bins)
+
+	store.compress()
+	bins = bins[:0]
+	bins = append(bins, Bin{index: -999, count: 1})
+	for index := 0; index < n; index += 8 {
+		bins = append(bins, Bin{index: index, count: 0.9 * 8})
+	}
+	assertEncodeBins(t, store, bins)
+}
+
 func TestDecode(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {

@@ -54,10 +54,11 @@ type BufferedPaginatedStore struct {
 	buffer                  buffer
 	lastCompactionBufferLen int
 
-	pages        [][]float64
-	minPageIndex int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
-	pageLenLog2  uint8
-	pageLenMask  int
+	pages             [][]float64
+	minPageIndex      int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
+	pageLenLog2       uint8
+	pageLenMask       int
+	lineIncrementLog2 uint8 // the log2 of the difference between the respective indexes of two contiguous counts encoded in a page
 
 	memory *memoryPool
 }
@@ -75,23 +76,24 @@ func NewBufferedPaginatedStore() *BufferedPaginatedStore {
 		minPageIndex:            maxInt,
 		pageLenLog2:             pageLenLog2,
 		pageLenMask:             1<<pageLenLog2 - 1,
+		lineIncrementLog2:       0,
 		memory:                  memory,
 	}
 }
 
 // pageIndex returns the page number the given index falls on.
 func (s *BufferedPaginatedStore) pageIndex(index int) int {
-	return index >> s.pageLenLog2
+	return (index >> s.lineIncrementLog2) >> s.pageLenLog2
 }
 
 // lineIndex returns the line number within a page that the given index falls on.
 func (s *BufferedPaginatedStore) lineIndex(index int) int {
-	return index & s.pageLenMask
+	return (index >> s.lineIncrementLog2) & s.pageLenMask
 }
 
 // index returns the store-level index for a given page number and a line within that page.
 func (s *BufferedPaginatedStore) index(pageIndex, lineIndex int) int {
-	return pageIndex<<s.pageLenLog2 + lineIndex
+	return (pageIndex<<s.pageLenLog2 + lineIndex) << s.lineIncrementLog2
 }
 
 // existingPage returns the page for the provided pageIndex if the page exists,
@@ -160,6 +162,56 @@ func sliceCap(len int) int {
 	return (len + increment - 1) & -increment
 }
 
+func (s *BufferedPaginatedStore) compress() {
+	pageLen := 1 << s.pageLenLog2
+
+	for pageOffset := 0; pageOffset < len(s.pages); pageOffset += 2 {
+
+		leftPage := s.pages[pageOffset]
+		var rightPage []float64
+		if pageOffset+1 < len(s.pages) {
+			rightPage = s.pages[pageOffset+1]
+		}
+
+		// Merge pages.
+		if leftPage != nil {
+			for lineIndex := 0; lineIndex < pageLen; lineIndex += 2 {
+				leftPage[lineIndex>>1] = leftPage[lineIndex] + leftPage[lineIndex+1]
+			}
+			if rightPage != nil {
+				for lineIndex := 0; lineIndex < pageLen; lineIndex += 2 {
+					leftPage[(pageLen+lineIndex)>>1] = rightPage[lineIndex] + rightPage[lineIndex+1]
+				}
+				s.pages[pageOffset+1] = nil
+				s.memory.release(float64SliceToBytes(rightPage))
+			} else {
+				for lineIndex := pageLen >> 1; lineIndex < pageLen; lineIndex++ {
+					leftPage[lineIndex] = 0
+				}
+			}
+
+			// Move left page.
+			s.pages[pageOffset] = s.pages[pageOffset>>1] // It may contain an unused page.
+			s.pages[pageOffset>>1] = leftPage
+
+		} else if rightPage != nil {
+			for lineIndex := pageLen - 2; lineIndex >= 0; lineIndex -= 2 {
+				rightPage[(pageLen+lineIndex)>>1] = rightPage[lineIndex] + rightPage[lineIndex+1]
+			}
+			for lineIndex := 0; lineIndex < pageLen>>1; lineIndex++ {
+				rightPage[lineIndex] = 0
+			}
+
+			s.pages[pageOffset+1] = s.pages[pageOffset>>1] // It may contain an unused page.
+			s.pages[pageOffset>>1] = rightPage
+		}
+	}
+	s.lineIncrementLog2++
+}
+
+// compact transfers indexes from the buffer to the pages. It only creates new
+// pages if they can encode enough buffered indexes so that it frees more space
+// in the buffer than the new page takes.
 func (s *BufferedPaginatedStore) compact() {
 	s.buffer.compact(s.pageIndex, func(countPageIndex, sizeInBuffer int) func(int) {
 		// We avoid creating a new page if it would take more memory space than
@@ -458,6 +510,7 @@ func (s *BufferedPaginatedStore) Copy() Store {
 		minPageIndex:            s.minPageIndex,
 		pageLenLog2:             s.pageLenLog2,
 		pageLenMask:             s.pageLenMask,
+		lineIncrementLog2:       s.lineIncrementLog2,
 		memory:                  s.memory,
 	}
 }
