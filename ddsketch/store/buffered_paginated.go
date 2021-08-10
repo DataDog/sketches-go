@@ -27,6 +27,8 @@ const (
 	minSliceCap         = 8
 )
 
+var errUnverifiedPredicate = errors.New("the predicate on the cumulative count is never verified")
+
 // BufferedPaginatedStore allocates storage for counts in aligned fixed-size
 // pages, themselves stored in a dynamically-sized slice. A page encodes the
 // counts for a contiguous range of indexes, and two pages that are contiguous
@@ -253,84 +255,24 @@ func (s *BufferedPaginatedStore) TotalCount() float64 {
 	return totalCount
 }
 
-func (s *BufferedPaginatedStore) MinIndex() (int, error) {
-	isEmpty := true
-
-	// Iterate over the buffer.
-	var minIndex int
-	for _, index := range s.buffer {
-		if isEmpty || index < minIndex {
-			isEmpty = false
-			minIndex = index
-		}
-	}
-
-	// Iterate over the pages.
-	for pageIndex := s.minPageIndex; pageIndex < s.minPageIndex+len(s.pages) && (isEmpty || pageIndex <= s.pageIndex(minIndex)); pageIndex++ {
-		page := s.pages[pageIndex-s.minPageIndex]
-		if page == nil {
-			continue
-		}
-
-		var lineIndexRangeEnd int
-		if !isEmpty && pageIndex == s.pageIndex(minIndex) {
-			lineIndexRangeEnd = s.lineIndex(minIndex)
-		} else {
-			lineIndexRangeEnd = 1 << s.pageLenLog2
-		}
-
-		for lineIndex := 0; lineIndex < lineIndexRangeEnd; lineIndex++ {
-			if page[lineIndex] > 0 {
-				return s.index(pageIndex, lineIndex), nil
-			}
-		}
-	}
-
-	if isEmpty {
-		return 0, errUndefinedMinIndex
-	} else {
-		return minIndex, nil
-	}
+func (s *BufferedPaginatedStore) MinIndex() (minIndex int, err error) {
+	err = errUndefinedMinIndex
+	s.forEachOrdered(func(index int, count float64) (stop bool) {
+		minIndex = index
+		err = nil
+		return true
+	}, false)
+	return
 }
 
-func (s *BufferedPaginatedStore) MaxIndex() (int, error) {
-	isEmpty := true
-
-	// Iterate over the buffer.
-	var maxIndex int
-	for _, index := range s.buffer {
-		if isEmpty || index > maxIndex {
-			isEmpty = false
-			maxIndex = index
-		}
-	}
-
-	// Iterate over the pages.
-	for pageIndex := s.minPageIndex + len(s.pages) - 1; pageIndex >= s.minPageIndex && (isEmpty || pageIndex >= s.pageIndex(maxIndex)); pageIndex-- {
-		page := s.pages[pageIndex-s.minPageIndex]
-		if page == nil {
-			continue
-		}
-
-		var lineIndexRangeStart int
-		if !isEmpty && pageIndex == s.pageIndex(maxIndex) {
-			lineIndexRangeStart = s.lineIndex(maxIndex)
-		} else {
-			lineIndexRangeStart = 0
-		}
-
-		for lineIndex := len(page) - 1; lineIndex >= lineIndexRangeStart; lineIndex-- {
-			if page[lineIndex] > 0 {
-				return s.index(pageIndex, lineIndex), nil
-			}
-		}
-	}
-
-	if isEmpty {
-		return 0, errUndefinedMaxIndex
-	} else {
-		return maxIndex, nil
-	}
+func (s *BufferedPaginatedStore) MaxIndex() (maxIndex int, err error) {
+	err = errUndefinedMaxIndex
+	s.forEachOrdered(func(index int, count float64) (stop bool) {
+		maxIndex = index
+		err = nil
+		return true
+	}, true)
+	return
 }
 
 func (s *BufferedPaginatedStore) KeyAtRank(rank float64) int {
@@ -356,39 +298,19 @@ func (s *BufferedPaginatedStore) KeyAtRank(rank float64) int {
 // minIndexWithCumulCount returns the minimum index whose cumulative count (that
 // is, the sum of the counts associated with the indexes less than or equal to
 // the index) verifies the predicate.
-func (s *BufferedPaginatedStore) minIndexWithCumulCount(predicate func(float64) bool) (int, error) {
-	s.sortBuffer()
+func (s *BufferedPaginatedStore) minIndexWithCumulCount(predicate func(float64) bool) (minIndex int, err error) {
+	err = errUnverifiedPredicate
 	cumulCount := float64(0)
-
-	// Iterate over the pages and the buffer simultaneously.
-	bufferPos := 0
-	for pageOffset, page := range s.pages {
-		for lineIndex, count := range page {
-			index := s.index(s.minPageIndex+pageOffset, lineIndex)
-
-			// Iterate over the buffer until index is reached.
-			for ; bufferPos < len(s.buffer) && s.buffer[bufferPos] < index; bufferPos++ {
-				cumulCount++
-				if predicate(cumulCount) {
-					return s.buffer[bufferPos], nil
-				}
-			}
-			cumulCount += count
-			if predicate(cumulCount) {
-				return index, nil
-			}
-		}
-	}
-
-	// Iterate over the rest of the buffer
-	for ; bufferPos < len(s.buffer); bufferPos++ {
-		cumulCount++
+	s.forEachOrdered(func(index int, count float64) (stop bool) {
+		minIndex = index
+		cumulCount += count
 		if predicate(cumulCount) {
-			return s.buffer[bufferPos], nil
+			err = nil
+			return true
 		}
-	}
-
-	return 0, errors.New("the predicate on the cumulative count is never verified")
+		return false
+	}, false)
+	return
 }
 
 func (s *BufferedPaginatedStore) MergeWith(other Store) {
@@ -474,12 +396,30 @@ func (s *BufferedPaginatedStore) Bins() <-chan Bin {
 }
 
 func (s *BufferedPaginatedStore) ForEach(f func(index int, count float64) (stop bool)) {
+	s.forEachOrdered(f, false)
+}
+
+func (s *BufferedPaginatedStore) forEachOrdered(f func(index int, count float64) (stop bool), descending bool) {
 	s.sortBuffer()
-	bufferPos := 0
+	inc := 1
+	pageOffsetFrom, pageOffsetTo := 0, len(s.pages)
+	lineIndexFrom, lineIndexTo := 0, 1<<s.pageLenLog2
+	bufferPos, bufferPosTo := 0, len(s.buffer)
+	if descending {
+		inc *= -1
+		pageOffsetFrom, pageOffsetTo = pageOffsetTo-1, pageOffsetFrom-1
+		lineIndexFrom, lineIndexTo = lineIndexTo-1, lineIndexFrom-1
+		bufferPos, bufferPosTo = bufferPosTo-1, bufferPos-1
+	}
 
 	// Iterate over the pages and the buffer simultaneously.
-	for pageOffset, page := range s.pages {
-		for lineIndex, count := range page {
+	for pageOffset := pageOffsetFrom; pageOffset != pageOffsetTo; pageOffset += inc {
+		page := s.pages[pageOffset]
+		if page == nil {
+			continue
+		}
+		for lineIndex := lineIndexFrom; lineIndex != lineIndexTo; lineIndex += inc {
+			count := page[lineIndex]
 			if count == 0 {
 				continue
 			}
@@ -490,34 +430,34 @@ func (s *BufferedPaginatedStore) ForEach(f func(index int, count float64) (stop 
 			var indexBufferStartPos int
 			for {
 				indexBufferStartPos = bufferPos
-				if indexBufferStartPos >= len(s.buffer) || s.buffer[indexBufferStartPos] > index {
+				if indexBufferStartPos == bufferPosTo || s.buffer[indexBufferStartPos]*inc > index*inc {
 					break
 				}
-				bufferPos++
-				for bufferPos < len(s.buffer) && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
-					bufferPos++
+				bufferPos += inc
+				for bufferPos != bufferPosTo && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
+					bufferPos += inc
 				}
 				if s.buffer[indexBufferStartPos] == index {
 					break
 				}
-				if f(s.buffer[indexBufferStartPos], float64(bufferPos-indexBufferStartPos)) {
+				if f(s.buffer[indexBufferStartPos], float64((bufferPos-indexBufferStartPos)*inc)) {
 					return
 				}
 			}
-			if f(index, count+float64(bufferPos-indexBufferStartPos)) {
+			if f(index, count+float64((bufferPos-indexBufferStartPos)*inc)) {
 				return
 			}
 		}
 	}
 
 	// Iterate over the rest of the buffer.
-	for bufferPos < len(s.buffer) {
+	for bufferPos != bufferPosTo {
 		indexBufferStartPos := bufferPos
-		bufferPos++
-		for bufferPos < len(s.buffer) && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
-			bufferPos++
+		bufferPos += inc
+		for bufferPos != bufferPosTo && s.buffer[bufferPos] == s.buffer[indexBufferStartPos] {
+			bufferPos += inc
 		}
-		if f(s.buffer[indexBufferStartPos], float64(bufferPos-indexBufferStartPos)) {
+		if f(s.buffer[indexBufferStartPos], float64((bufferPos-indexBufferStartPos)*inc)) {
 			return
 		}
 	}
