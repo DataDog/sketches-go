@@ -13,14 +13,15 @@ import (
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
 
+// All sizes in bytes.
 const (
-	ptrSize         = 32 << (^uintptr(0) >> 63)
-	intSize         = 32 << (^uint(0) >> 63)
-	float64size     = 64
-	bufferEntrySize = intSize
-	countSize       = float64size
+	ptrSizeLog2         = uint8(2 + ^uintptr(0)>>63)
+	intSizeLog2         = uint8(2 + ^uint(0)>>63)
+	float64sizeLog2     = uint8(3)
+	bufferEntrySizeLog2 = intSizeLog2
+	countSizeLog2       = float64sizeLog2
 
-	defaultPageLenLog2 = 5 // pageLen = 32
+	defaultPageLenLog2 = uint8(5) // 256 bytes, 32 float64 counts
 )
 
 // BufferedPaginatedStore allocates storage for counts in aligned fixed-size
@@ -51,7 +52,7 @@ type BufferedPaginatedStore struct {
 
 	pages        [][]float64 // len == cap, the slice is always used to its maximum capacity
 	minPageIndex int         // minPageIndex == maxInt iff pages are unused (they may still be allocated)
-	pageLenLog2  int
+	pageLenLog2  uint8
 	pageLenMask  int
 }
 
@@ -134,7 +135,7 @@ func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float6
 
 func (s *BufferedPaginatedStore) newPagesLen(required int) int {
 	// Grow in size by multiples of 64 bytes
-	pageGrowthIncrement := 64 * 8 / ptrSize
+	pageGrowthIncrement := 64 >> ptrSizeLog2
 	return (required + pageGrowthIncrement - 1) & -pageGrowthIncrement
 }
 
@@ -161,7 +162,7 @@ func (s *BufferedPaginatedStore) compact() {
 		// in the page, because we may have to extend s.pages, the store may end
 		// up larger. However, for the sake of simplicity, we ignore the length
 		// of s.pages.
-		ensureExists := (bufferPageEnd-bufferPageStart)*bufferEntrySize >= pageLen*float64size
+		ensureExists := (bufferPageEnd-bufferPageStart)<<bufferEntrySizeLog2 >= pageLen<<countSizeLog2
 		newPage := s.page(pageIndex, ensureExists)
 		if len(newPage) > 0 {
 			for _, index := range s.buffer[bufferPageStart:bufferPageEnd] {
