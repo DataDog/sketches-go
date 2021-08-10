@@ -510,6 +510,8 @@ func assertEncodeBins(t *testing.T, store Store, normalizedBins []Bin) {
 		assert.Equal(t, normalizedBins[len(normalizedBins)-1].index, store.KeyAtRank(cumulCount*(1-epsilon)), "key at rank before total count")
 		assert.Equal(t, normalizedBins[len(normalizedBins)-1].index, store.KeyAtRank(cumulCount*(1+epsilon)), "key at rank after total count")
 	}
+
+	assertStoreSpecificProperties(t, store)
 }
 
 // normalize deduplicates indexes, removes counts equal to zero and sorts by index.
@@ -527,6 +529,20 @@ func normalize(bins []Bin) []Bin {
 	}
 	sort.Slice(normalizedBins, func(i, j int) bool { return normalizedBins[i].index < normalizedBins[j].index })
 	return normalizedBins
+}
+
+func assertStoreSpecificProperties(t *testing.T, store Store) {
+	if s, ok := store.(*BufferedPaginatedStore); ok {
+
+		for _, page := range s.pages {
+			assert.True(t, page == nil || (len(page) == 1<<s.pageLenLog2), "page len")
+			assert.True(t, page == nil || (cap(page) == 1<<s.pageLenLog2), "page cap")
+		}
+		if len(s.pages) > 0 {
+			assert.True(t, s.pages[0] != nil, "first page")
+			assert.True(t, s.pages[len(s.pages)-1] != nil, "last page")
+		}
+	}
 }
 
 func EvaluateValues(t *testing.T, store *DenseStore, values []int, collapsingLowest bool, collapsingHighest bool) {

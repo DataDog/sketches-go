@@ -7,7 +7,9 @@ package store
 
 import (
 	"errors"
+	"reflect"
 	"sort"
+	"unsafe"
 
 	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
@@ -21,7 +23,8 @@ const (
 	bufferEntrySizeLog2 = intSizeLog2
 	countSizeLog2       = float64sizeLog2
 
-	defaultPageLenLog2 = uint8(5) // 256 bytes, 32 float64 counts
+	defaultPageSizeLog2 = uint8(8) // 256 bytes, 32 float64 counts
+	minSliceCap         = 8
 )
 
 // BufferedPaginatedStore allocates storage for counts in aligned fixed-size
@@ -50,24 +53,27 @@ type BufferedPaginatedStore struct {
 	buffer                     []int // FIXME: in practice, int32 (even int16, depending on the accuracy parameter) is enough
 	bufferCompactionTriggerLen int   // compaction happens only after this buffer length is reached
 
-	pages        [][]float64 // len == cap, the slice is always used to its maximum capacity
-	minPageIndex int         // minPageIndex == maxInt iff pages are unused (they may still be allocated)
+	pages        [][]float64
+	minPageIndex int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
 	pageLenLog2  uint8
 	pageLenMask  int
+
+	memory *memoryPool
 }
 
 func NewBufferedPaginatedStore() *BufferedPaginatedStore {
 	initialBufferCapacity := 4
-	pageLenLog2 := defaultPageLenLog2
-	pageLen := 1 << pageLenLog2
+	pageSizeLog2 := defaultPageSizeLog2
+	pageLenLog2 := pageSizeLog2 - countSizeLog2
 
 	return &BufferedPaginatedStore{
 		buffer:                     make([]int, 0, initialBufferCapacity),
-		bufferCompactionTriggerLen: 2 * pageLen,
+		bufferCompactionTriggerLen: 2 * (1 << pageLenLog2),
 		pages:                      nil,
 		minPageIndex:               maxInt,
 		pageLenLog2:                pageLenLog2,
-		pageLenMask:                pageLen - 1,
+		pageLenMask:                (1 << pageLenLog2) - 1,
+		memory:                     newUnlimitedMemoryPool(pageSizeLog2),
 	}
 }
 
@@ -86,57 +92,70 @@ func (s *BufferedPaginatedStore) index(pageIndex, lineIndex int) int {
 	return pageIndex<<s.pageLenLog2 + lineIndex
 }
 
+// existingPage returns the page for the provided pageIndex if the page exists,
+// or a slice with len == 0 otherwise (possibly nil slice).
+func (s *BufferedPaginatedStore) existingPage(pageIndex int) []float64 {
+	if pageIndex >= s.minPageIndex && pageIndex < s.minPageIndex+len(s.pages) {
+		// No need to extend s.pages.
+		return s.pages[pageIndex-s.minPageIndex]
+	} else {
+		return nil
+	}
+}
+
 // page returns the page for the provided pageIndex, or nil. When unexisting,
 // the page is created if and only if ensureExists is true.
 func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float64 {
-	pageLen := 1 << s.pageLenLog2
-
-	if pageIndex >= s.minPageIndex && pageIndex < s.minPageIndex+len(s.pages) {
-		// No need to extend s.pages.
-		page := &s.pages[pageIndex-s.minPageIndex]
-		if ensureExists && len(*page) == 0 {
-			*page = append(*page, make([]float64, pageLen)...)
-		}
-		return *page
+	if page := s.existingPage(pageIndex); !ensureExists || page != nil {
+		return page
 	}
 
-	if !ensureExists {
-		return nil
+	// Figure out the new length of s.pages and if existing pages should be shifted in s.pages.
+	newPagesLen := len(s.pages)
+	shift := 0
+	if s.minPageIndex == maxInt {
+		// len(s.pages) == 0
+		newPagesLen = 1
+	} else if pageIndex < s.minPageIndex {
+		// Extends s.pages left.
+		shift = s.minPageIndex - pageIndex
+		newPagesLen = shift + len(s.pages)
+	} else if pageIndex >= s.minPageIndex+len(s.pages) {
+		// Extends s.pages right.
+		newPagesLen = pageIndex - s.minPageIndex + 1
 	}
 
-	if pageIndex < s.minPageIndex {
-		if s.minPageIndex == maxInt {
-			if len(s.pages) == 0 {
-				s.pages = append(s.pages, make([][]float64, s.newPagesLen(1))...)
-			}
-			s.minPageIndex = pageIndex - len(s.pages)/2
-		} else {
-			// Extends s.pages left.
-			newLen := s.newPagesLen(s.minPageIndex - pageIndex + 1 + len(s.pages))
-			addedLen := newLen - len(s.pages)
-			s.pages = append(s.pages, make([][]float64, addedLen)...)
-			copy(s.pages[addedLen:], s.pages)
-			for i := 0; i < addedLen; i++ {
+	// Update the length and the capacity of s.pages.
+	if newPagesLen > cap(s.pages) {
+		newPages := make([][]float64, newPagesLen, sliceCap(newPagesLen))
+		copy(newPages[shift:], s.pages)
+		s.pages = newPages
+	} else {
+		s.pages = s.pages[:newPagesLen]
+		if shift > 0 {
+			copy(s.pages[shift:], s.pages)
+			for i := range s.pages[:shift] {
 				s.pages[i] = nil
 			}
-			s.minPageIndex -= addedLen
 		}
-	} else {
-		// Extends s.pages right.
-		s.pages = append(s.pages, make([][]float64, s.newPagesLen(pageIndex-s.minPageIndex+1)-len(s.pages))...)
 	}
 
-	page := &s.pages[pageIndex-s.minPageIndex]
-	if len(*page) == 0 {
-		*page = append(*page, make([]float64, pageLen)...)
+	// Update minPageIndex.
+	if s.minPageIndex == maxInt {
+		s.minPageIndex = pageIndex
+	} else {
+		s.minPageIndex -= shift
 	}
-	return *page
+
+	newPage := bytesToFloat64Slice(s.memory.acquire())
+	s.pages[pageIndex-s.minPageIndex] = newPage
+	return newPage
 }
 
-func (s *BufferedPaginatedStore) newPagesLen(required int) int {
+func sliceCap(len int) int {
 	// Grow in size by multiples of 64 bytes
-	pageGrowthIncrement := 64 >> ptrSizeLog2
-	return (required + pageGrowthIncrement - 1) & -pageGrowthIncrement
+	increment := 64 >> ptrSizeLog2
+	return (len + increment - 1) & -increment
 }
 
 // compact transfers indexes from the buffer to the pages. It only creates new
@@ -164,7 +183,7 @@ func (s *BufferedPaginatedStore) compact() {
 		// of s.pages.
 		ensureExists := (bufferPageEnd-bufferPageStart)<<bufferEntrySizeLog2 >= pageLen<<countSizeLog2
 		newPage := s.page(pageIndex, ensureExists)
-		if len(newPage) > 0 {
+		if newPage != nil {
 			for _, index := range s.buffer[bufferPageStart:bufferPageEnd] {
 				newPage[s.lineIndex(index)]++
 			}
@@ -182,13 +201,10 @@ func (s *BufferedPaginatedStore) sortBuffer() {
 }
 
 func (s *BufferedPaginatedStore) Add(index int) {
-	pageIndex := s.pageIndex(index)
-	if pageIndex >= s.minPageIndex && pageIndex < s.minPageIndex+len(s.pages) {
-		page := s.pages[pageIndex-s.minPageIndex]
-		if len(page) > 0 {
-			page[s.lineIndex(index)]++
-			return
-		}
+	// First, check if it can be encoded in an existing page.
+	if page := s.existingPage(s.pageIndex(index)); page != nil {
+		page[s.lineIndex(index)]++
+		return
 	}
 
 	// The page does not exist, use the buffer.
@@ -252,7 +268,7 @@ func (s *BufferedPaginatedStore) MinIndex() (int, error) {
 	// Iterate over the pages.
 	for pageIndex := s.minPageIndex; pageIndex < s.minPageIndex+len(s.pages) && (isEmpty || pageIndex <= s.pageIndex(minIndex)); pageIndex++ {
 		page := s.pages[pageIndex-s.minPageIndex]
-		if len(page) == 0 {
+		if page == nil {
 			continue
 		}
 
@@ -292,7 +308,7 @@ func (s *BufferedPaginatedStore) MaxIndex() (int, error) {
 	// Iterate over the pages.
 	for pageIndex := s.minPageIndex + len(s.pages) - 1; pageIndex >= s.minPageIndex && (isEmpty || pageIndex >= s.pageIndex(maxIndex)); pageIndex-- {
 		page := s.pages[pageIndex-s.minPageIndex]
-		if len(page) == 0 {
+		if page == nil {
 			continue
 		}
 
@@ -510,10 +526,11 @@ func (s *BufferedPaginatedStore) ForEach(f func(index int, count float64) (stop 
 func (s *BufferedPaginatedStore) Copy() Store {
 	bufferCopy := make([]int, len(s.buffer))
 	copy(bufferCopy, s.buffer)
-	pagesCopy := make([][]float64, len(s.pages))
+
+	pagesCopy := make([][]float64, len(s.pages), sliceCap(len(s.pages)))
 	for i, page := range s.pages {
-		if len(page) > 0 {
-			pageCopy := make([]float64, len(page))
+		if page != nil {
+			pageCopy := bytesToFloat64Slice(s.memory.acquire())
 			copy(pageCopy, page)
 			pagesCopy[i] = pageCopy
 		}
@@ -525,14 +542,21 @@ func (s *BufferedPaginatedStore) Copy() Store {
 		minPageIndex:               s.minPageIndex,
 		pageLenLog2:                s.pageLenLog2,
 		pageLenMask:                s.pageLenMask,
+		memory:                     s.memory,
 	}
 }
 
 func (s *BufferedPaginatedStore) Clear() {
 	s.buffer = s.buffer[:0]
-	for i := range s.pages {
-		s.pages[i] = s.pages[i][:0]
+	// Give pages back to the memory pool.
+	for i, page := range s.pages {
+		if page != nil {
+			s.pages[i] = nil
+			s.memory.release(float64SliceToBytes(page))
+		}
 	}
+	// Trim s.pages.
+	s.pages = s.pages[:0:min(cap(s.pages), minSliceCap)]
 	s.minPageIndex = maxInt
 }
 
@@ -582,7 +606,7 @@ func (s *BufferedPaginatedStore) Encode(b *[]byte, t enc.FlagType) {
 	}
 
 	for pageOffset, page := range s.pages {
-		if len(page) > 0 {
+		if page != nil {
 			enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingContiguousCounts))
 			enc.EncodeUvarint64(b, uint64(len(page)))
 			enc.EncodeVarint64(b, int64(s.index(s.minPageIndex+pageOffset, 0)))
@@ -659,3 +683,30 @@ func (s *BufferedPaginatedStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.
 }
 
 var _ Store = (*BufferedPaginatedStore)(nil)
+
+// Float64SliceToBytes converts a []float64 to []byte unsafely.
+func float64SliceToBytes(s []float64) []byte {
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&s))
+
+	var b []byte
+	bh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	bh.Data = sh.Data
+	bh.Len = sh.Len << float64sizeLog2
+	bh.Cap = sh.Cap << float64sizeLog2
+	return b
+}
+
+// BytesToUint64Slice converts a []byte to []uint64 unsafely.
+func bytesToFloat64Slice(b []byte) []float64 {
+	if len(b)&(1<<float64sizeLog2-1) != 0 || cap(b)&(1<<float64sizeLog2-1) != 0 {
+		panic("cannot cast: invalid len or cap")
+	}
+	bh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+
+	var s []float64
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&s))
+	sh.Data = bh.Data
+	sh.Len = bh.Len >> float64sizeLog2
+	sh.Cap = bh.Cap >> float64sizeLog2
+	return s
+}
