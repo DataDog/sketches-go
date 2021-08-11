@@ -547,6 +547,26 @@ var (
 			},
 		},
 		{
+			name: "dense/small_far_apart",
+			sketch: func() *DDSketch {
+				sketch := NewDDSketch(indexMapping, store.NewDenseStore(), store.NewDenseStore())
+				sketch.AddWithCount(1, 0.1)
+				sketch.AddWithCount(1e20, 1.2)
+				return sketch
+			},
+		},
+		{
+			name: "collapsing_lowest_dense/log_normal_non_int_count",
+			sketch: func() *DDSketch {
+				sketch := NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(2048), store.NewCollapsingLowestDenseStore(2048))
+				gen := dataset.NewLognormal(0, 2)
+				for i := 0; i < int(1e5); i++ {
+					sketch.AddWithCount(gen.Generate(), 0.1)
+				}
+				return sketch
+			},
+		},
+		{
 			name: "sparse/single_value",
 			sketch: func() *DDSketch {
 				sketch := NewDDSketch(indexMapping, store.NewSparseStore(), store.NewSparseStore())
