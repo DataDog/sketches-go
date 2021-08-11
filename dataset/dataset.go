@@ -37,7 +37,7 @@ func (d *Dataset) LowerQuantile(q float64) float64 {
 	}
 
 	d.sort()
-	rank := q * float64(d.Count-1)
+	rank := q * (d.Count - 1)
 	return d.Values[int(math.Floor(rank))]
 }
 
@@ -47,7 +47,7 @@ func (d *Dataset) UpperQuantile(q float64) float64 {
 	}
 
 	d.sort()
-	rank := q * float64(d.Count-1)
+	rank := q * (d.Count - 1)
 	return d.Values[int(math.Ceil(rank))]
 }
 
