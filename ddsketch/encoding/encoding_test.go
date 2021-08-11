@@ -59,6 +59,12 @@ func TestDecodeVaruint64(t *testing.T) {
 	}
 }
 
+func TestUvaruint64Size(t *testing.T) {
+	for _, testCase := range varuint64TestCases {
+		assert.Equal(t, len(testCase.encoded), Uvarint64Size(testCase.decoded))
+	}
+}
+
 type int64TestCase struct {
 	decoded int64
 	encoded []byte
@@ -127,6 +133,12 @@ func TestDecodeVarint64(t *testing.T) {
 	{
 		_, err := DecodeVarint32(&[]byte{0x81, 0x80, 0x80, 0x80, 0x10})
 		assert.Equal(t, err, errVarint32Overflow)
+	}
+}
+
+func TestVaruint64Size(t *testing.T) {
+	for _, testCase := range varint64TestCases {
+		assert.Equal(t, len(testCase.encoded), Varint64Size(testCase.decoded))
 	}
 }
 
@@ -281,5 +293,11 @@ func TestDecodeVarfloat64(t *testing.T) {
 	{
 		_, err := DecodeVarfloat64(&[]byte{0x80})
 		assert.Equal(t, err, io.EOF)
+	}
+}
+
+func TestVarfloat64Size(t *testing.T) {
+	for _, testCase := range varfloat64TestCases {
+		assert.Equal(t, len(testCase.encoded), Varfloat64Size(testCase.decoded))
 	}
 }
