@@ -6,31 +6,41 @@
 package dataset
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestRanks(t *testing.T) {
+func TestQuantiles(t *testing.T) {
 	d := NewDataset()
-	d.Add(1)
-	d.Add(3)
-	d.Add(3)
-	d.Add(3)
-	d.Add(5)
+	d.Add(11.0)
+	d.Add(12.0)
+	d.Add(13.0)
+	d.Add(13.0)
+	d.Add(15.0)
 
-	assert.Equal(t, int64(0), d.MinRank(0))
-	assert.Equal(t, int64(0), d.MaxRank(0))
-	assert.Equal(t, int64(0), d.MinRank(1))
-	assert.Equal(t, int64(1), d.MaxRank(1))
-	assert.Equal(t, int64(1), d.MinRank(2))
-	assert.Equal(t, int64(1), d.MaxRank(2))
-	assert.Equal(t, int64(1), d.MinRank(3))
-	assert.Equal(t, int64(4), d.MaxRank(3))
-	assert.Equal(t, int64(4), d.MinRank(4))
-	assert.Equal(t, int64(4), d.MaxRank(4))
-	assert.Equal(t, int64(4), d.MinRank(5))
-	assert.Equal(t, int64(5), d.MaxRank(5))
-	assert.Equal(t, int64(5), d.MinRank(6))
-	assert.Equal(t, int64(5), d.MaxRank(6))
+	assert.True(t, math.IsNaN(d.LowerQuantile(-0.5/(d.Count-1))))
+	assert.Equal(t, 11.0, d.LowerQuantile(0.0/(d.Count-1)))
+	assert.Equal(t, 11.0, d.LowerQuantile(0.5/(d.Count-1)))
+	assert.Equal(t, 12.0, d.LowerQuantile(1.0/(d.Count-1)))
+	assert.Equal(t, 12.0, d.LowerQuantile(1.5/(d.Count-1)))
+	assert.Equal(t, 13.0, d.LowerQuantile(2.0/(d.Count-1)))
+	assert.Equal(t, 13.0, d.LowerQuantile(2.5/(d.Count-1)))
+	assert.Equal(t, 13.0, d.LowerQuantile(3.0/(d.Count-1)))
+	assert.Equal(t, 13.0, d.LowerQuantile(3.5/(d.Count-1)))
+	assert.Equal(t, 15.0, d.LowerQuantile(4.0/(d.Count-1)))
+	assert.True(t, math.IsNaN(d.LowerQuantile(4.5/(d.Count-1))))
+
+	assert.True(t, math.IsNaN(d.UpperQuantile(-0.5/(d.Count-1))))
+	assert.Equal(t, 11.0, d.UpperQuantile(0.0/(d.Count-1)))
+	assert.Equal(t, 12.0, d.UpperQuantile(0.5/(d.Count-1)))
+	assert.Equal(t, 12.0, d.UpperQuantile(1.0/(d.Count-1)))
+	assert.Equal(t, 13.0, d.UpperQuantile(1.5/(d.Count-1)))
+	assert.Equal(t, 13.0, d.UpperQuantile(2.0/(d.Count-1)))
+	assert.Equal(t, 13.0, d.UpperQuantile(2.5/(d.Count-1)))
+	assert.Equal(t, 13.0, d.UpperQuantile(3.0/(d.Count-1)))
+	assert.Equal(t, 15.0, d.UpperQuantile(3.5/(d.Count-1)))
+	assert.Equal(t, 15.0, d.UpperQuantile(4.0/(d.Count-1)))
+	assert.True(t, math.IsNaN(d.UpperQuantile(4.5/(d.Count-1))))
 }
