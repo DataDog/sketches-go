@@ -511,158 +511,161 @@ func TestDecodingErrors(t *testing.T) {
 }
 
 type sketchDataTestCase struct {
-	name   string
-	sketch func() *DDSketch
+	name          string
+	indexMapping  mapping.IndexMapping
+	storeProvider store.Provider
+	fillSketch    func(sketch DDSketch)
 }
 
 var (
 	indexMapping, _ = mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
 	dataTestCases   = []sketchDataTestCase{
 		{
-			name: "dense/empty",
-			sketch: func() *DDSketch {
-				return NewDDSketch(indexMapping, store.NewDenseStore(), store.NewDenseStore())
-			},
+			name:          "dense/empty",
+			indexMapping:  indexMapping,
+			storeProvider: store.DenseStoreConstructor,
+			fillSketch:    func(sketch DDSketch) {},
 		},
 		{
-			name: "dense/small_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewDenseStore(), store.NewDenseStore())
+			name:          "dense/small_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.DenseStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.Add(0)
 				sketch.Add(2)
 				sketch.Add(28)
 				sketch.Add(-3)
-				return sketch
 			},
 		},
 		{
-			name: "dense/small_non_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewDenseStore(), store.NewDenseStore())
+			name:          "dense/small_non_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.DenseStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.AddWithCount(0, 0.1)
 				sketch.AddWithCount(2, 1.2)
 				sketch.AddWithCount(28, 8.66)
 				sketch.AddWithCount(-3, 2.33)
-				return sketch
 			},
 		},
 		{
-			name: "dense/small_far_apart",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewDenseStore(), store.NewDenseStore())
+			name:          "dense/small_far_apart",
+			indexMapping:  indexMapping,
+			storeProvider: store.DenseStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.AddWithCount(1, 0.1)
 				sketch.AddWithCount(1e20, 1.2)
-				return sketch
 			},
 		},
 		{
-			name: "collapsing_lowest_dense/log_normal_non_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewCollapsingLowestDenseStore(2048), store.NewCollapsingLowestDenseStore(2048))
+			name:          "collapsing_lowest_dense/log_normal_non_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.Provider(func() store.Store { return store.NewCollapsingLowestDenseStore(2048) }),
+			fillSketch: func(sketch DDSketch) {
 				gen := dataset.NewLognormal(0, 2)
 				for i := 0; i < int(1e5); i++ {
 					sketch.AddWithCount(gen.Generate(), 0.1)
 				}
-				return sketch
 			},
 		},
 		{
-			name: "sparse/single_value",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewSparseStore(), store.NewSparseStore())
+			name:          "sparse/single_value",
+			indexMapping:  indexMapping,
+			storeProvider: store.SparseStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.Add(34654677.3676)
-				return sketch
 			},
 		},
 		{
-			name: "sparse/small_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewSparseStore(), store.NewSparseStore())
+			name:          "sparse/small_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.SparseStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.Add(0)
 				sketch.Add(2)
 				sketch.Add(28)
 				sketch.Add(-3)
-				return sketch
 			},
 		},
 		{
-			name: "sparse/log_normal_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewSparseStore(), store.NewSparseStore())
+			name:          "sparse/log_normal_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.SparseStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				gen := dataset.NewLognormal(0, 2)
 				for i := 0; i < int(1e5); i++ {
 					sketch.Add(gen.Generate())
 				}
-				return sketch
 			},
 		},
 		{
-			name: "buffered_paginated/empty",
-			sketch: func() *DDSketch {
-				return NewDDSketch(indexMapping, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore())
+			name:          "buffered_paginated/empty",
+			indexMapping:  indexMapping,
+			storeProvider: store.BufferedPaginatedStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 			},
 		},
 		{
-			name: "buffered_paginated/single_value",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore())
+			name:          "buffered_paginated/single_value",
+			indexMapping:  indexMapping,
+			storeProvider: store.BufferedPaginatedStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.Add(34654677.3676)
-				return sketch
 			},
 		},
 		{
-			name: "buffered_paginated/small_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore())
+			name:          "buffered_paginated/small_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.BufferedPaginatedStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.Add(0)
 				sketch.Add(2)
 				sketch.Add(28)
 				sketch.Add(-3)
-				return sketch
 			},
 		},
 		{
-			name: "buffered_paginated/small_non_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore())
+			name:          "buffered_paginated/small_non_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.BufferedPaginatedStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				sketch.AddWithCount(0, 0.1)
 				sketch.AddWithCount(2, 1.2)
 				sketch.AddWithCount(28, 86676635552.8783786)
 				sketch.AddWithCount(-3, 2.33)
-				return sketch
 			},
 		},
 		{
-			name: "buffered_paginated/int_count_linear",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore())
+			name:          "buffered_paginated/int_count_linear",
+			indexMapping:  indexMapping,
+			storeProvider: store.BufferedPaginatedStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				gen := dataset.NewLinear()
 				for i := 0; i < int(1e5); i++ {
 					sketch.Add(gen.Generate())
 				}
-				return sketch
 			},
 		},
 		{
-			name: "buffered_paginated/log_normal_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore())
+			name:          "buffered_paginated/log_normal_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.BufferedPaginatedStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				gen := dataset.NewLognormal(0, 2)
 				for i := 0; i < int(1e5); i++ {
 					sketch.Add(gen.Generate())
 				}
-				return sketch
 			},
 		},
 		{
-			name: "buffered_paginated/log_normal_non_int_count",
-			sketch: func() *DDSketch {
-				sketch := NewDDSketch(indexMapping, store.NewBufferedPaginatedStore(), store.NewBufferedPaginatedStore())
+			name:          "buffered_paginated/log_normal_non_int_count",
+			indexMapping:  indexMapping,
+			storeProvider: store.BufferedPaginatedStoreConstructor,
+			fillSketch: func(sketch DDSketch) {
 				gen := dataset.NewLognormal(0, 2)
 				for i := 0; i < int(1e5); i++ {
 					sketch.AddWithCount(gen.Generate(), 0.1)
 				}
-				return sketch
 			},
 		},
 	}
@@ -671,7 +674,8 @@ var (
 func TestBenchmarkEncodedSize(t *testing.T) {
 	t.Logf("%-45s %6s %6s %17s\n", "test case", "proto", "custom", "custom_no_mapping")
 	for _, testCase := range dataTestCases {
-		sketch := testCase.sketch()
+		sketch := NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
+		testCase.fillSketch(*sketch)
 		encoded := make([]byte, 0)
 		sketch.Encode(&encoded, false)
 		encodedWithoutIndexMapping := make([]byte, 0)
@@ -684,7 +688,7 @@ func TestBenchmarkEncodedSize(t *testing.T) {
 type serTestCase struct {
 	name  string
 	ser   func(s *DDSketch, b *[]byte)
-	deser func(b []byte, s *DDSketch)
+	deser func(b []byte, s *DDSketch, p store.Provider)
 }
 
 var serTestCases []serTestCase = []serTestCase{
@@ -694,39 +698,32 @@ var serTestCases []serTestCase = []serTestCase{
 			serialized, _ := proto.Marshal(s.ToProto())
 			*b = serialized
 		},
-		deser: func(b []byte, s *DDSketch) {
+		deser: func(b []byte, s *DDSketch, p store.Provider) {
 			var sketchPb sketchpb.DDSketch
 			proto.Unmarshal(b, &sketchPb)
 
-			// Reuse stores
-			store1 := s.positiveValueStore
-			store2 := s.negativeValueStore
-			store1.Clear()
-			store2.Clear()
-			storeProvider := store.Provider(func() store.Store {
-				if store1 != nil {
-					s := store1
-					store1 = nil
-					return s
-				} else if store2 != nil {
-					s := store2
-					store2 = nil
-					return s
-				}
-				panic("cannot reuse stores")
-			})
-
-			serialized, _ := FromProtoWithStoreProvider(&sketchPb, storeProvider)
+			serialized, _ := FromProtoWithStoreProvider(&sketchPb, p)
 			*s = *serialized
 		},
 	},
 	{
 		name: "custom",
 		ser: func(s *DDSketch, b *[]byte) {
+			*b = []byte{}
+			s.Encode(b, false)
+		},
+		deser: func(b []byte, s *DDSketch, p store.Provider) {
+			sketch, _ := DecodeDDSketch(b, p, nil)
+			*s = *sketch
+		},
+	},
+	{
+		name: "custom_reusing",
+		ser: func(s *DDSketch, b *[]byte) {
 			*b = (*b)[:0]
 			s.Encode(b, false)
 		},
-		deser: func(b []byte, s *DDSketch) {
+		deser: func(b []byte, s *DDSketch, p store.Provider) {
 			s.Clear()
 			s.DecodeAndMergeWith(b)
 		},
@@ -740,13 +737,14 @@ func TestSerDeser(t *testing.T) {
 		store.SparseStoreConstructor,
 	}
 	for _, testCase := range dataTestCases {
-		sketch := testCase.sketch()
+		sketch := NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
+		testCase.fillSketch(*sketch)
 		for _, serTestCase := range serTestCases {
 			var serialized []byte
 			serTestCase.ser(sketch, &serialized)
 			for _, storeProvider := range storeProviders {
 				deserialized := NewDDSketchFromStoreProvider(sketch.IndexMapping, storeProvider)
-				serTestCase.deser(serialized, deserialized)
+				serTestCase.deser(serialized, deserialized, storeProvider)
 				assertSketchesEquivalent(t, sketch, deserialized)
 			}
 		}
@@ -799,13 +797,14 @@ func clamp(q float64) float64 {
 
 var (
 	sinkBytes  []byte
-	sinkSketch DDSketch
+	sinkSketch *DDSketch
 )
 
 func BenchmarkEncode(b *testing.B) {
 	for _, testCase := range dataTestCases {
 		b.Run(testCase.name, func(b *testing.B) {
-			sketch := testCase.sketch()
+			sketch := NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
+			testCase.fillSketch(*sketch)
 			for _, sTestCase := range serTestCases {
 				b.Run(sTestCase.name, func(b *testing.B) {
 					b.ResetTimer()
@@ -821,16 +820,16 @@ func BenchmarkEncode(b *testing.B) {
 func BenchmarkDecode(b *testing.B) {
 	for _, testCase := range dataTestCases {
 		b.Run(testCase.name, func(b *testing.B) {
-			sketch := testCase.sketch()
+			sketch := NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
+			testCase.fillSketch(*sketch)
 			for _, sTestCase := range serTestCases {
 				var encoded []byte
 				sTestCase.ser(sketch, &encoded)
 				b.Run(sTestCase.name, func(b *testing.B) {
-					sinkSketch = *testCase.sketch()
-					sinkSketch.Clear()
+					sinkSketch = NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
-						sTestCase.deser(encoded, &sinkSketch)
+						sTestCase.deser(encoded, sinkSketch, testCase.storeProvider)
 					}
 				})
 			}
