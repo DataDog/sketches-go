@@ -800,6 +800,24 @@ var (
 	sinkSketch *DDSketch
 )
 
+func BenchmarkAdd(b *testing.B) {
+	relativeAccuracy := 1e-2
+	mappings := make(map[string]mapping.IndexMapping)
+	mappings["logarithmic"], _ = mapping.NewLogarithmicMapping(relativeAccuracy)
+	mappings["cubic"], _ = mapping.NewCubicallyInterpolatedMapping(relativeAccuracy)
+	mappings["linear"], _ = mapping.NewLinearlyInterpolatedMapping(relativeAccuracy)
+	storeProvider := store.Provider(func() store.Store { return store.NewCollapsingLowestDenseStore(2048) })
+	for name, mapping := range mappings {
+		b.Run(name, func(b *testing.B) {
+			sinkSketch = NewDDSketchFromStoreProvider(mapping, storeProvider)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				sinkSketch.Add(rand.ExpFloat64())
+			}
+		})
+	}
+}
+
 func BenchmarkEncode(b *testing.B) {
 	for _, testCase := range dataTestCases {
 		b.Run(testCase.name, func(b *testing.B) {
