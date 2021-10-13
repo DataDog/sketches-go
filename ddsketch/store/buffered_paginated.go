@@ -571,6 +571,7 @@ func (s *BufferedPaginatedStore) Reweight(w float64) error {
 
 func (s *BufferedPaginatedStore) Encode(b *[]byte, t enc.FlagType) {
 	if len(s.buffer) > 0 {
+		s.compact()
 		enc.EncodeFlag(b, enc.NewFlag(t, enc.BinEncodingIndexDeltas))
 		enc.EncodeUvarint64(b, uint64(len(s.buffer)))
 		previousIndex := 0
