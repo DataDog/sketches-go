@@ -6,6 +6,7 @@
 package ddsketch
 
 import (
+	"github.com/DataDog/sketches-go/ddsketch/stat"
 	"math"
 	"math/rand"
 	"testing"
@@ -507,6 +508,37 @@ func TestDecodingErrors(t *testing.T) {
 		sketch.Encode(encoded, false)
 		_, err := DecodeDDSketchWithExactSummaryStatistics(*encoded, storeProvider, nil)
 		assert.NotNil(t, err)
+	}
+}
+
+func TestFromData(t *testing.T) {
+	{
+		emptySketch, _ := NewDefaultDDSketch(1e-2)
+		emptySummaryStatistics := stat.NewSummaryStatistics()
+		_, err := NewDDSketchWithExactSummaryStatisticsFromData(emptySketch, emptySummaryStatistics)
+		assert.NoError(t, err)
+	}
+	{
+		sketch, _ := NewDefaultDDSketch(1e-2)
+		summaryStatistics := stat.NewSummaryStatistics()
+		_ = sketch.AddWithCount(1.2, 1.0)
+		summaryStatistics.Add(1.2, 1.0)
+		_, err := NewDDSketchWithExactSummaryStatisticsFromData(sketch, summaryStatistics)
+		assert.NoError(t, err)
+	}
+	{
+		emptySketch, _ := NewDefaultDDSketch(1e-2)
+		summaryStatistics := stat.NewSummaryStatistics()
+		summaryStatistics.Add(1.2, 1.0)
+		_, err := NewDDSketchWithExactSummaryStatisticsFromData(emptySketch, summaryStatistics)
+		assert.Error(t, err)
+	}
+	{
+		sketch, _ := NewDefaultDDSketch(1e-2)
+		emptySummaryStatistics := stat.NewSummaryStatistics()
+		_ = sketch.AddWithCount(1.2, 1.0)
+		_, err := NewDDSketchWithExactSummaryStatisticsFromData(sketch, emptySummaryStatistics)
+		assert.Error(t, err)
 	}
 }
 

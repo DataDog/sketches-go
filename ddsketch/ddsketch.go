@@ -506,6 +506,17 @@ func NewDDSketchWithExactSummaryStatistics(mapping mapping.IndexMapping, storePr
 	}
 }
 
+// NewDDSketchWithExactSummaryStatisticsFromData constructs DDSketchWithExactSummaryStatistics from the provided sketch and exact summary statistics.
+func NewDDSketchWithExactSummaryStatisticsFromData(sketch *DDSketch, summaryStatistics *stat.SummaryStatistics) (*DDSketchWithExactSummaryStatistics, error) {
+	if sketch.IsEmpty() != (summaryStatistics.Count() == 0) {
+		return nil, errors.New("sketch and summary statistics do not match")
+	}
+	return &DDSketchWithExactSummaryStatistics{
+		sketch:            sketch,
+		summaryStatistics: summaryStatistics,
+	}, nil
+}
+
 func (s *DDSketchWithExactSummaryStatistics) RelativeAccuracy() float64 {
 	return s.sketch.RelativeAccuracy()
 }

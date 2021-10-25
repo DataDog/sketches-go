@@ -12,6 +12,33 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestFromData(t *testing.T) {
+	{
+		_, err := NewSummaryStatisticsFromData(0.0, 0.0, math.Inf(1), math.Inf(-1))
+		assert.NoError(t, err)
+	}
+	{
+		_, err := NewSummaryStatisticsFromData(1.0, 2.0, 3.0, 3.0)
+		assert.NoError(t, err)
+	}
+	{
+		_, err := NewSummaryStatisticsFromData(1.0, 2.0, 3.0, 4.0)
+		assert.NoError(t, err)
+	}
+	{
+		_, err := NewSummaryStatisticsFromData(0.0, 0.0, 0.0, 0.0)
+		assert.Error(t, err)
+	}
+	{
+		_, err := NewSummaryStatisticsFromData(-1.0, 0.0, 0.0, 0.0)
+		assert.Error(t, err)
+	}
+	{
+		_, err := NewSummaryStatisticsFromData(1.0, 0.0, 1.0, 0.0)
+		assert.Error(t, err)
+	}
+}
+
 func TestEmpty(t *testing.T) {
 	s := NewSummaryStatistics()
 	assertEmpty(t, s)
