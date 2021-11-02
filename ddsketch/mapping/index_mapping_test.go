@@ -16,9 +16,19 @@ const (
 	testMaxRelativeAccuracy      = 1 - 1e-3
 	testMinRelativeAccuracy      = 1e-7
 	floatingPointAcceptableError = 1e-12
+	multiplier                   = 1 + math.Sqrt2*1e2
 )
 
-var multiplier = 1 + math.Sqrt(2)*1e2
+type testCase struct {
+	name                 string
+	fromRelativeAccuracy func(relAcc float64) (IndexMapping, error)
+}
+
+var testCases = []testCase{
+	{name: "Logarithmic", fromRelativeAccuracy: func(relAcc float64) (IndexMapping, error) { return NewLogarithmicMapping(relAcc) }},
+	{name: "LinearlyInterpolated", fromRelativeAccuracy: func(relAcc float64) (IndexMapping, error) { return NewLinearlyInterpolatedMapping(relAcc) }},
+	{name: "CubicallyInterpolated", fromRelativeAccuracy: func(relAcc float64) (IndexMapping, error) { return NewCubicallyInterpolatedMapping(relAcc) }},
+}
 
 func TestLogarithmicMappingEquivalence(t *testing.T) {
 	relativeAccuracy := 0.01
@@ -64,24 +74,14 @@ func EvaluateMappingAccuracy(t *testing.T, mapping IndexMapping, relativeAccurac
 	EvaluateRelativeAccuracy(t, value, mappedValue, relativeAccuracy)
 }
 
-func TestLogarithmicMappingAccuracy(t *testing.T) {
-	for relativeAccuracy := testMaxRelativeAccuracy; relativeAccuracy >= testMinRelativeAccuracy; relativeAccuracy *= (testMaxRelativeAccuracy * testMaxRelativeAccuracy) {
-		mapping, _ := NewLogarithmicMapping(relativeAccuracy)
-		EvaluateMappingAccuracy(t, mapping, relativeAccuracy)
-	}
-}
-
-func TestLinearlyInterpolatedMappingAccuracy(t *testing.T) {
-	for relativeAccuracy := testMaxRelativeAccuracy; relativeAccuracy >= testMinRelativeAccuracy; relativeAccuracy *= (testMaxRelativeAccuracy * testMaxRelativeAccuracy) {
-		mapping, _ := NewLinearlyInterpolatedMapping(relativeAccuracy)
-		EvaluateMappingAccuracy(t, mapping, relativeAccuracy)
-	}
-}
-
-func TestCubicallyInterpolatedMappingAccuracy(t *testing.T) {
-	for relativeAccuracy := testMaxRelativeAccuracy; relativeAccuracy >= testMinRelativeAccuracy; relativeAccuracy *= (testMaxRelativeAccuracy * testMaxRelativeAccuracy) {
-		mapping, _ := NewCubicallyInterpolatedMapping(relativeAccuracy)
-		EvaluateMappingAccuracy(t, mapping, relativeAccuracy)
+func TestMappingAccuracy(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for relativeAccuracy := testMaxRelativeAccuracy; relativeAccuracy >= testMinRelativeAccuracy; relativeAccuracy *= testMaxRelativeAccuracy {
+				mapping, _ := testCase.fromRelativeAccuracy(relativeAccuracy)
+				EvaluateMappingAccuracy(t, mapping, relativeAccuracy)
+			}
+		})
 	}
 }
 
