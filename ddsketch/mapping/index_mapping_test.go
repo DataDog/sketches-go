@@ -6,6 +6,7 @@
 package mapping
 
 import (
+	"github.com/DataDog/sketches-go/ddsketch/encoding"
 	"math"
 	"testing"
 
@@ -106,4 +107,24 @@ func TestSerialization(t *testing.T) {
 	deserializedMapping, err := FromProto(m.ToProto())
 	assert.Nil(t, err)
 	assert.True(t, m.Equals(deserializedMapping))
+}
+
+func TestEncodeDecodeEquality(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for relativeAccuracy := testMaxRelativeAccuracy; relativeAccuracy >= testMinRelativeAccuracy; relativeAccuracy *= testMaxRelativeAccuracy {
+				mapping, err := testCase.fromRelativeAccuracy(relativeAccuracy)
+				assert.NoError(t, err)
+
+				var b []byte
+				mapping.Encode(&b)
+
+				flag, err := encoding.DecodeFlag(&b)
+				assert.NoError(t, err)
+				decoded, err := Decode(&b, flag)
+
+				assert.Equal(t, mapping, decoded)
+			}
+		})
+	}
 }
