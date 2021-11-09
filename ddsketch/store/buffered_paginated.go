@@ -376,26 +376,27 @@ func (s *BufferedPaginatedStore) minIndexWithCumulCount(predicate func(float64) 
 
 func (s *BufferedPaginatedStore) MergeWith(other Store) {
 	o, ok := other.(*BufferedPaginatedStore)
-	if ok && len(o.pages) == 0 {
-		// Optimized merging if the other store only has buffered data.
-		oBufferOffset := 0
-		for {
-			bufferCapOverhead := max(cap(s.buffer), s.bufferCompactionTriggerLen) - len(s.buffer)
-			if bufferCapOverhead >= len(o.buffer)-oBufferOffset {
-				s.buffer = append(s.buffer, o.buffer[oBufferOffset:]...)
-				return
+	if ok && s.pageLenLog2 == o.pageLenLog2 {
+		// Merge pages.
+		for oPageOffset, oPage := range o.pages {
+			oPageIndex := o.minPageIndex + oPageOffset
+			page := s.page(oPageIndex, true)
+			for i, oCount := range oPage {
+				page[i] += oCount
 			}
-			s.buffer = append(s.buffer, o.buffer[oBufferOffset:oBufferOffset+bufferCapOverhead]...)
-			oBufferOffset += bufferCapOverhead
-			s.compact()
 		}
-	}
 
-	// Fallback merging.
-	other.ForEach(func(index int, count float64) (stop bool) {
-		s.AddWithCount(index, count)
-		return false
-	})
+		// Merge buffers.
+		for _, index := range o.buffer {
+			s.Add(index)
+		}
+	} else {
+		// Fallback merging.
+		other.ForEach(func(index int, count float64) (stop bool) {
+			s.AddWithCount(index, count)
+			return false
+		})
+	}
 }
 
 func (s *BufferedPaginatedStore) MergeWithProto(pb *sketchpb.Store) {
