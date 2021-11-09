@@ -392,9 +392,10 @@ func (s *BufferedPaginatedStore) MergeWith(other Store) {
 	}
 
 	// Fallback merging.
-	for bin := range other.Bins() {
-		s.AddBin(bin)
-	}
+	other.ForEach(func(index int, count float64) (stop bool) {
+		s.AddWithCount(index, count)
+		return false
+	})
 }
 
 func (s *BufferedPaginatedStore) MergeWithProto(pb *sketchpb.Store) {
@@ -541,9 +542,10 @@ func (s *BufferedPaginatedStore) ToProto() *sketchpb.Store {
 	}
 	// FIXME: add heuristic to use contiguousBinCounts when cheaper.
 	binCounts := make(map[int32]float64)
-	for bin := range s.Bins() {
-		binCounts[int32(bin.index)] = bin.count
-	}
+	s.ForEach(func(index int, count float64) (stop bool) {
+		binCounts[int32(index)] = count
+		return false
+	})
 	return &sketchpb.Store{
 		BinCounts: binCounts,
 	}
