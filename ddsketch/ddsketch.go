@@ -119,22 +119,22 @@ func (s *DDSketch) Add(value float64) error {
 
 // Adds a value to the sketch with a float64 count.
 func (s *DDSketch) AddWithCount(value, count float64) error {
-	if !(value >= -s.MaxIndexableValue()) {
-		if math.IsNaN(value) {
-			return ErrUntrackableNaN
-		}
-		return ErrUntrackableTooLow
-	} else if !(value <= s.MaxIndexableValue()) {
-		return ErrUntrackableTooHigh
-	}
 	if count < 0 {
 		return ErrNegativeCount
 	}
 
 	if value > s.MinIndexableValue() {
+		if value > s.MaxIndexableValue() {
+			return ErrUntrackableTooHigh
+		}
 		s.positiveValueStore.AddWithCount(s.Index(value), count)
 	} else if value < -s.MinIndexableValue() {
+		if value < -s.MaxIndexableValue() {
+			return ErrUntrackableTooLow
+		}
 		s.negativeValueStore.AddWithCount(s.Index(-value), count)
+	} else if math.IsNaN(value) {
+		return ErrUntrackableNaN
 	} else {
 		s.zeroCount += count
 	}
