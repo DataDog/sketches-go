@@ -483,7 +483,7 @@ func (s *DDSketch) Reweight(w float64) error {
 // statistics. Because of the need to track them exactly, adding and merging
 // operations are slightly more exepensive than those of DDSketch.
 type DDSketchWithExactSummaryStatistics struct {
-	sketch            *DDSketch
+	*DDSketch
 	summaryStatistics *stat.SummaryStatistics
 }
 
@@ -493,14 +493,14 @@ func NewDefaultDDSketchWithExactSummaryStatistics(relativeAccuracy float64) (*DD
 		return nil, err
 	}
 	return &DDSketchWithExactSummaryStatistics{
-		sketch:            sketch,
+		DDSketch:          sketch,
 		summaryStatistics: stat.NewSummaryStatistics(),
 	}, nil
 }
 
 func NewDDSketchWithExactSummaryStatistics(mapping mapping.IndexMapping, storeProvider store.Provider) *DDSketchWithExactSummaryStatistics {
 	return &DDSketchWithExactSummaryStatistics{
-		sketch:            NewDDSketchFromStoreProvider(mapping, storeProvider),
+		DDSketch:          NewDDSketchFromStoreProvider(mapping, storeProvider),
 		summaryStatistics: stat.NewSummaryStatistics(),
 	}
 }
@@ -511,13 +511,9 @@ func NewDDSketchWithExactSummaryStatisticsFromData(sketch *DDSketch, summaryStat
 		return nil, errors.New("sketch and summary statistics do not match")
 	}
 	return &DDSketchWithExactSummaryStatistics{
-		sketch:            sketch,
+		DDSketch:          sketch,
 		summaryStatistics: summaryStatistics,
 	}, nil
-}
-
-func (s *DDSketchWithExactSummaryStatistics) RelativeAccuracy() float64 {
-	return s.sketch.RelativeAccuracy()
 }
 
 func (s *DDSketchWithExactSummaryStatistics) IsEmpty() bool {
@@ -533,21 +529,21 @@ func (s *DDSketchWithExactSummaryStatistics) GetSum() float64 {
 }
 
 func (s *DDSketchWithExactSummaryStatistics) GetMinValue() (float64, error) {
-	if s.sketch.IsEmpty() {
+	if s.DDSketch.IsEmpty() {
 		return math.NaN(), errEmptySketch
 	}
 	return s.summaryStatistics.Min(), nil
 }
 
 func (s *DDSketchWithExactSummaryStatistics) GetMaxValue() (float64, error) {
-	if s.sketch.IsEmpty() {
+	if s.DDSketch.IsEmpty() {
 		return math.NaN(), errEmptySketch
 	}
 	return s.summaryStatistics.Max(), nil
 }
 
 func (s *DDSketchWithExactSummaryStatistics) GetValueAtQuantile(quantile float64) (float64, error) {
-	value, err := s.sketch.GetValueAtQuantile(quantile)
+	value, err := s.DDSketch.GetValueAtQuantile(quantile)
 	min := s.summaryStatistics.Min()
 	if value < min {
 		return min, err
@@ -560,7 +556,7 @@ func (s *DDSketchWithExactSummaryStatistics) GetValueAtQuantile(quantile float64
 }
 
 func (s *DDSketchWithExactSummaryStatistics) GetValuesAtQuantiles(quantiles []float64) ([]float64, error) {
-	values, err := s.sketch.GetValuesAtQuantiles(quantiles)
+	values, err := s.DDSketch.GetValuesAtQuantiles(quantiles)
 	min := s.summaryStatistics.Min()
 	max := s.summaryStatistics.Max()
 	for i := range values {
@@ -574,16 +570,16 @@ func (s *DDSketchWithExactSummaryStatistics) GetValuesAtQuantiles(quantiles []fl
 }
 
 func (s *DDSketchWithExactSummaryStatistics) ForEach(f func(value, count float64) (stop bool)) {
-	s.sketch.ForEach(f)
+	s.DDSketch.ForEach(f)
 }
 
 func (s *DDSketchWithExactSummaryStatistics) Clear() {
-	s.sketch.Clear()
+	s.DDSketch.Clear()
 	s.summaryStatistics.Clear()
 }
 
 func (s *DDSketchWithExactSummaryStatistics) Add(value float64) error {
-	err := s.sketch.Add(value)
+	err := s.DDSketch.Add(value)
 	if err != nil {
 		return err
 	}
@@ -595,7 +591,7 @@ func (s *DDSketchWithExactSummaryStatistics) AddWithCount(value, count float64) 
 	if count == 0 {
 		return nil
 	}
-	err := s.sketch.AddWithCount(value, count)
+	err := s.DDSketch.AddWithCount(value, count)
 	if err != nil {
 		return err
 	}
@@ -604,7 +600,7 @@ func (s *DDSketchWithExactSummaryStatistics) AddWithCount(value, count float64) 
 }
 
 func (s *DDSketchWithExactSummaryStatistics) MergeWith(o *DDSketchWithExactSummaryStatistics) error {
-	err := s.sketch.MergeWith(o.sketch)
+	err := s.DDSketch.MergeWith(o.DDSketch)
 	if err != nil {
 		return err
 	}
@@ -614,13 +610,13 @@ func (s *DDSketchWithExactSummaryStatistics) MergeWith(o *DDSketchWithExactSumma
 
 func (s *DDSketchWithExactSummaryStatistics) Copy() *DDSketchWithExactSummaryStatistics {
 	return &DDSketchWithExactSummaryStatistics{
-		sketch:            s.sketch.Copy(),
+		DDSketch:          s.DDSketch.Copy(),
 		summaryStatistics: s.summaryStatistics.Copy(),
 	}
 }
 
 func (s *DDSketchWithExactSummaryStatistics) Reweight(factor float64) error {
-	err := s.sketch.Reweight(factor)
+	err := s.DDSketch.Reweight(factor)
 	if err != nil {
 		return err
 	}
@@ -632,7 +628,7 @@ func (s *DDSketchWithExactSummaryStatistics) ChangeMapping(newMapping mapping.In
 	summaryStatisticsCopy := s.summaryStatistics.Copy()
 	summaryStatisticsCopy.Rescale(scaleFactor)
 	return &DDSketchWithExactSummaryStatistics{
-		sketch:            s.sketch.ChangeMapping(newMapping, storeProvider(), storeProvider(), scaleFactor),
+		DDSketch:          s.DDSketch.ChangeMapping(newMapping, storeProvider(), storeProvider(), scaleFactor),
 		summaryStatistics: summaryStatisticsCopy,
 	}
 }
@@ -654,7 +650,7 @@ func (s *DDSketchWithExactSummaryStatistics) Encode(b *[]byte, omitIndexMapping 
 		enc.EncodeFlag(b, enc.FlagMax)
 		enc.EncodeFloat64LE(b, s.summaryStatistics.Max())
 	}
-	s.sketch.Encode(b, omitIndexMapping)
+	s.DDSketch.Encode(b, omitIndexMapping)
 }
 
 // DecodeDDSketchWithExactSummaryStatistics deserializes a sketch.
@@ -674,7 +670,7 @@ func (s *DDSketchWithExactSummaryStatistics) Encode(b *[]byte, omitIndexMapping 
 // it is empty), because it does not track exact summary statistics
 func DecodeDDSketchWithExactSummaryStatistics(b []byte, storeProvider store.Provider, indexMapping mapping.IndexMapping) (*DDSketchWithExactSummaryStatistics, error) {
 	s := &DDSketchWithExactSummaryStatistics{
-		sketch: &DDSketch{
+		DDSketch: &DDSketch{
 			IndexMapping:       indexMapping,
 			positiveValueStore: storeProvider(),
 			negativeValueStore: storeProvider(),
@@ -687,7 +683,7 @@ func DecodeDDSketchWithExactSummaryStatistics(b []byte, storeProvider store.Prov
 }
 
 func (s *DDSketchWithExactSummaryStatistics) DecodeAndMergeWith(bb []byte) error {
-	err := s.sketch.decodeAndMergeWith(bb, func(b *[]byte, flag enc.Flag) error {
+	err := s.DDSketch.decodeAndMergeWith(bb, func(b *[]byte, flag enc.Flag) error {
 		switch flag {
 		case enc.FlagCount:
 			count, err := enc.DecodeVarfloat64(b)
@@ -719,7 +715,7 @@ func (s *DDSketchWithExactSummaryStatistics) DecodeAndMergeWith(bb []byte) error
 	}
 	// It is assumed that if the count is encoded, other exact summary
 	// statistics are encoded as well, which is the case if Encode is used.
-	if s.summaryStatistics.Count() == 0 && !s.sketch.IsEmpty() {
+	if s.summaryStatistics.Count() == 0 && !s.DDSketch.IsEmpty() {
 		return errors.New("missing exact summary statistics")
 	}
 	return nil
