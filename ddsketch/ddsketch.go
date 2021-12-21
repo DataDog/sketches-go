@@ -18,8 +18,12 @@ import (
 )
 
 var (
-	errEmptySketch error = errors.New("no such element exists")
-	errUnknownFlag error = errors.New("unknown encoding flag")
+	ErrUntrackableNaN     = errors.New("input value is NaN and cannot be tracked by the sketch")
+	ErrUntrackableTooLow  = errors.New("input value is too low and cannot be tracked by the sketch")
+	ErrUntrackableTooHigh = errors.New("input value is too high and cannot be tracked by the sketch")
+	ErrNegativeCount      = errors.New("count cannot be negative")
+	errEmptySketch        = errors.New("no such element exists")
+	errUnknownFlag        = errors.New("unknown encoding flag")
 )
 
 // Unexported to prevent usage and avoid the cost of dynamic dispatch
@@ -119,11 +123,16 @@ func (s *DDSketch) Add(value float64) error {
 
 // Adds a value to the sketch with a float64 count.
 func (s *DDSketch) AddWithCount(value, count float64) error {
-	if value < -s.maxIndexableValue || value > s.maxIndexableValue {
-		return errors.New("The input value is outside the range that is tracked by the sketch.")
+	if !(value >= -s.maxIndexableValue) {
+		if math.IsNaN(value) {
+			return ErrUntrackableNaN
+		}
+		return ErrUntrackableTooLow
+	} else if !(value <= s.maxIndexableValue) {
+		return ErrUntrackableTooHigh
 	}
 	if count < 0 {
-		return errors.New("The count cannot be negative.")
+		return ErrNegativeCount
 	}
 
 	if value > s.minIndexableAbsoluteValue {

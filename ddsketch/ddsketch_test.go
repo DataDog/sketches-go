@@ -460,6 +460,14 @@ func TestForEach(t *testing.T) {
 	}
 }
 
+func TestErrors(t *testing.T) {
+	sketch, _ := LogUnboundedDenseDDSketch(0.01)
+	assert.Equal(t, ErrUntrackableTooLow, sketch.Add(math.Inf(-1)))
+	assert.Equal(t, ErrUntrackableTooHigh, sketch.Add(math.Inf(1)))
+	assert.Equal(t, ErrUntrackableNaN, sketch.Add(math.NaN()))
+	assert.Equal(t, ErrNegativeCount, sketch.AddWithCount(1, -1))
+}
+
 func TestDecodingErrors(t *testing.T) {
 	mapping1, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
 	mapping2, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.04, 0)
