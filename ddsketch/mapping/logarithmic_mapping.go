@@ -20,9 +20,11 @@ import (
 // indices to cover a given range of values. This is done by logarithmically
 // mapping floating-point values to integers.
 type LogarithmicMapping struct {
-	gamma       float64 // base
-	indexOffset float64
-	multiplier  float64 // precomputed for performance
+	gamma             float64 // base
+	indexOffset       float64
+	multiplier        float64 // precomputed for performance
+	minIndexableValue float64
+	maxIndexableValue float64
 }
 
 func NewLogarithmicMapping(relativeAccuracy float64) (*LogarithmicMapping, error) {
@@ -38,10 +40,19 @@ func NewLogarithmicMappingWithGamma(gamma, indexOffset float64) (*LogarithmicMap
 	if gamma <= 1 {
 		return nil, errors.New("Gamma must be greater than 1.")
 	}
+	multiplier := 1 / math.Log(gamma)
 	m := &LogarithmicMapping{
 		gamma:       gamma,
 		indexOffset: indexOffset,
-		multiplier:  1 / math.Log(gamma),
+		multiplier:  multiplier,
+		minIndexableValue: math.Max(
+			math.Exp((math.MinInt32-indexOffset)/multiplier+1), // so that index >= MinInt32
+			minNormalFloat64*gamma,
+		),
+		maxIndexableValue: math.Min(
+			math.Exp((math.MaxInt32-indexOffset)/multiplier-1), // so that index <= MaxInt32
+			math.Exp(expOverflow)/(2*gamma)*(gamma+1),          // so that math.Exp does not overflow
+		),
 	}
 	return m, nil
 }
@@ -73,17 +84,11 @@ func (m *LogarithmicMapping) LowerBound(index int) float64 {
 }
 
 func (m *LogarithmicMapping) MinIndexableValue() float64 {
-	return math.Max(
-		math.Exp((math.MinInt32-m.indexOffset)/m.multiplier+1), // so that index >= MinInt32
-		minNormalFloat64*(1+m.RelativeAccuracy())/(1-m.RelativeAccuracy()),
-	)
+	return m.minIndexableValue
 }
 
 func (m *LogarithmicMapping) MaxIndexableValue() float64 {
-	return math.Min(
-		math.Exp((math.MaxInt32-m.indexOffset)/m.multiplier-1), // so that index <= MaxInt32
-		math.Exp(expOverflow)/(1+m.RelativeAccuracy()),         // so that math.Exp does not overflow
-	)
+	return m.maxIndexableValue
 }
 
 func (m *LogarithmicMapping) RelativeAccuracy() float64 {
