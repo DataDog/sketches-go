@@ -28,9 +28,11 @@ const (
 // documentation of this method can be found in: <a
 // href="https://github.com/DataDog/sketches-java/">sketches-java</a>
 type CubicallyInterpolatedMapping struct {
-	gamma       float64 // base
-	indexOffset float64
-	multiplier  float64 // precomputed for performance
+	gamma             float64 // base
+	indexOffset       float64
+	multiplier        float64 // precomputed for performance
+	minIndexableValue float64
+	maxIndexableValue float64
 }
 
 func NewCubicallyInterpolatedMapping(relativeAccuracy float64) (*CubicallyInterpolatedMapping, error) {
@@ -46,10 +48,20 @@ func NewCubicallyInterpolatedMappingWithGamma(gamma, indexOffset float64) (*Cubi
 	if gamma <= 1 {
 		return nil, errors.New("Gamma must be greater than 1.")
 	}
+	multiplier := 1 / math.Log2(gamma)
+	adjustedGamma := math.Pow(gamma, 7/(10*math.Ln2))
 	m := CubicallyInterpolatedMapping{
 		gamma:       gamma,
 		indexOffset: indexOffset,
-		multiplier:  1 / math.Log2(gamma),
+		multiplier:  multiplier,
+		minIndexableValue: math.Max(
+			math.Exp2((math.MinInt32-indexOffset)/multiplier+1), // so that index >= MinInt32
+			minNormalFloat64*adjustedGamma,
+		),
+		maxIndexableValue: math.Min(
+			math.Exp2((math.MaxInt32-indexOffset)/multiplier-1),       // so that index <= MaxInt32
+			math.Exp(expOverflow)/(2*adjustedGamma)*(adjustedGamma+1), // so that math.Exp does not overflow
+		),
 	}
 	return &m, nil
 }
@@ -100,17 +112,11 @@ func (m *CubicallyInterpolatedMapping) approximateInverseLog(x float64) float64 
 }
 
 func (m *CubicallyInterpolatedMapping) MinIndexableValue() float64 {
-	return math.Max(
-		math.Exp2((math.MinInt32-m.indexOffset)/m.multiplier+1), // so that index >= MinInt32
-		minNormalFloat64*(1+m.RelativeAccuracy())/(1-m.RelativeAccuracy()),
-	)
+	return m.minIndexableValue
 }
 
 func (m *CubicallyInterpolatedMapping) MaxIndexableValue() float64 {
-	return math.Min(
-		math.Exp2((math.MaxInt32-m.indexOffset)/m.multiplier-1), // so that index <= MaxInt32
-		math.Exp(expOverflow)/(1+m.RelativeAccuracy()),          // so that math.Exp does not overflow
-	)
+	return m.maxIndexableValue
 }
 
 func (m *CubicallyInterpolatedMapping) RelativeAccuracy() float64 {
