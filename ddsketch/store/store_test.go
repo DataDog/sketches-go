@@ -1058,6 +1058,33 @@ func BenchmarkNewAndAddWithCountNorm(b *testing.B) {
 	}
 }
 
+func BenchmarkMergeWith(b *testing.B) {
+	numDistinctSketchesLog2 := 3
+	for numIndexesLog10 := 0; numIndexesLog10 <= 6; numIndexesLog10++ {
+		numIndexes := int(math.Pow10(numIndexesLog10)) // per store
+		b.Run(fmt.Sprintf("1e%d", numIndexesLog10), func(b *testing.B) {
+			for _, testCase := range testCases {
+				stores := make([]Store, 1<<numDistinctSketchesLog2)
+				for i := range stores {
+					stores[i] = testCase.newStore()
+					for j := 0; j < numIndexes; j++ {
+						stores[i].Add(int(rand.NormFloat64() * 200))
+					}
+				}
+				store := testCase.newStore()
+				b.Run(testCase.name, func(b *testing.B) {
+					// Note that this is not ideal given that the computational cost
+					// of merging may vary with the number of stores already merged.
+					for i := 0; i < b.N; i++ {
+						store.MergeWith(stores[i&((1<<3)-1)])
+					}
+				})
+				sink = store
+			}
+		})
+	}
+}
+
 func TestBenchmarkSize(t *testing.T) {
 	for numIndexesLog10 := 0; numIndexesLog10 <= 7; numIndexesLog10++ {
 		numIndexes := int(math.Pow10(numIndexesLog10))
