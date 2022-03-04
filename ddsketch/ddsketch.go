@@ -32,6 +32,8 @@ type quantileSketch interface {
 	IsEmpty() bool
 	GetCount() float64
 	GetSum() float64
+	GetPositiveValueStore() store.Store
+	GetNegativeValueStore() store.Store
 	GetMinValue() (float64, error)
 	GetMaxValue() (float64, error)
 	GetValueAtQuantile(quantile float64) (float64, error)
@@ -248,6 +250,18 @@ func (s *DDSketch) GetSum() (sum float64) {
 		return false
 	})
 	return sum
+}
+
+// GetPositiveValueStore returns the store.Store object that contains the positive
+// values of the sketch.
+func (s *DDSketch) GetPositiveValueStore() (store.Store) {
+	return s.positiveValueStore
+}
+
+// GetNegativeValueStore returns the store.Store object that contains the negative
+// values of the sketch.
+func (s *DDSketch) GetNegativeValueStore() (store.Store) {
+	return s.negativeValueStore
 }
 
 // ForEach applies f on the bins of the sketches until f returns true.
@@ -526,6 +540,18 @@ func (s *DDSketchWithExactSummaryStatistics) GetCount() float64 {
 
 func (s *DDSketchWithExactSummaryStatistics) GetSum() float64 {
 	return s.summaryStatistics.Sum()
+}
+
+// GetPositiveValueStore returns the store.Store object that contains the positive
+// values of the sketch.
+func (s *DDSketchWithExactSummaryStatistics) GetPositiveValueStore() (store.Store) {
+	return s.DDSketch.positiveValueStore
+}
+
+// GetNegativeValueStore returns the store.Store object that contains the negative
+// values of the sketch.
+func (s *DDSketchWithExactSummaryStatistics) GetNegativeValueStore() (store.Store) {
+	return s.DDSketch.negativeValueStore
 }
 
 func (s *DDSketchWithExactSummaryStatistics) GetMinValue() (float64, error) {
