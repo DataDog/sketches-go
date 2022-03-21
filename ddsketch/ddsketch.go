@@ -31,6 +31,7 @@ type quantileSketch interface {
 	RelativeAccuracy() float64
 	IsEmpty() bool
 	GetCount() float64
+	GetZeroCount() float64
 	GetSum() float64
 	GetPositiveValueStore() store.Store
 	GetNegativeValueStore() store.Store
@@ -200,6 +201,13 @@ func (s *DDSketch) GetValuesAtQuantiles(quantiles []float64) ([]float64, error) 
 // Return the total number of values that have been added to this sketch.
 func (s *DDSketch) GetCount() float64 {
 	return s.zeroCount + s.positiveValueStore.TotalCount() + s.negativeValueStore.TotalCount()
+}
+
+// GetZeroCount returns the number of zero values that have been added to this sketch.
+// Note: values that are very small (lower than MinIndexableValue if positive, or higher than -MinIndexableValue if negative)
+// are also mapped to the zero bucket.
+func (s *DDSketch) GetZeroCount() float64 {
+	return s.zeroCount
 }
 
 // Return true iff no value has been added to this sketch.
@@ -536,6 +544,13 @@ func (s *DDSketchWithExactSummaryStatistics) IsEmpty() bool {
 
 func (s *DDSketchWithExactSummaryStatistics) GetCount() float64 {
 	return s.summaryStatistics.Count()
+}
+
+// GetZeroCount returns the number of zero values that have been added to this sketch.
+// Note: values that are very small (lower than MinIndexableValue if positive, or higher than -MinIndexableValue if negative)
+// are also mapped to the zero bucket.
+func (s *DDSketchWithExactSummaryStatistics) GetZeroCount() float64 {
+	return s.DDSketch.zeroCount
 }
 
 func (s *DDSketchWithExactSummaryStatistics) GetSum() float64 {
