@@ -7,6 +7,7 @@ package store
 
 import (
 	"errors"
+	"reflect"
 	"sort"
 
 	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
@@ -49,24 +50,25 @@ type BufferedPaginatedStore struct {
 	buffer                     []int // FIXME: in practice, int32 (even int16, depending on the accuracy parameter) is enough
 	bufferCompactionTriggerLen int   // compaction happens only after this buffer length is reached
 
-	pages        [][]float64 // len == cap, the slice is always used to its maximum capacity
-	minPageIndex int         // minPageIndex == maxInt iff pages are unused (they may still be allocated)
-	pageLenLog2  int
-	pageLenMask  int
+	pages           [][]float64
+	minPageIndex    int // minPageIndex == maxInt iff pages are unused (they may still be allocated)
+	pageLenLog2     int
+	pageLenMask     int
+	emptyPageMinPos int // any already allocated empty page has a position in pages that is greater than or equal to emptyPageMinPos
 }
 
 func NewBufferedPaginatedStore() *BufferedPaginatedStore {
-	initialBufferCapacity := 4
 	pageLenLog2 := defaultPageLenLog2
 	pageLen := 1 << pageLenLog2
 
 	return &BufferedPaginatedStore{
-		buffer:                     make([]int, 0, initialBufferCapacity),
+		buffer:                     nil,
 		bufferCompactionTriggerLen: 2 * pageLen,
 		pages:                      nil,
 		minPageIndex:               maxInt,
 		pageLenLog2:                pageLenLog2,
 		pageLenMask:                pageLen - 1,
+		emptyPageMinPos:            0,
 	}
 }
 
@@ -88,15 +90,13 @@ func (s *BufferedPaginatedStore) index(pageIndex, lineIndex int) int {
 // page returns the page for the provided pageIndex, or nil. When unexisting,
 // the page is created if and only if ensureExists is true.
 func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float64 {
-	pageLen := 1 << s.pageLenLog2
-
 	if pageIndex >= s.minPageIndex && pageIndex < s.minPageIndex+len(s.pages) {
 		// No need to extend s.pages.
-		page := &s.pages[pageIndex-s.minPageIndex]
-		if ensureExists && len(*page) == 0 {
-			*page = append(*page, make([]float64, pageLen)...)
+		i := pageIndex - s.minPageIndex
+		if ensureExists {
+			s.makePage(i)
 		}
-		return *page
+		return s.pages[i]
 	}
 
 	if !ensureExists {
@@ -106,33 +106,67 @@ func (s *BufferedPaginatedStore) page(pageIndex int, ensureExists bool) []float6
 	if pageIndex < s.minPageIndex {
 		if s.minPageIndex == maxInt {
 			if len(s.pages) == 0 {
-				s.pages = append(s.pages, make([][]float64, s.newPagesLen(1))...)
+				s.pages = append(s.pages, make([][]float64, s.newPagesCap(1))...)[:1]
 			}
 			s.minPageIndex = pageIndex - len(s.pages)/2
 		} else {
 			// Extends s.pages left.
-			newLen := s.newPagesLen(s.minPageIndex - pageIndex + 1 + len(s.pages))
-			addedLen := newLen - len(s.pages)
-			s.pages = append(s.pages, make([][]float64, addedLen)...)
-			copy(s.pages[addedLen:], s.pages)
-			for i := 0; i < addedLen; i++ {
+			requiredPagesLen := s.minPageIndex - pageIndex + 1 + len(s.pages)
+			addedPagesLen := requiredPagesLen - len(s.pages)
+			if requiredPagesLen > cap(s.pages) {
+				s.pages = append(s.pages, make([][]float64, s.newPagesCap(requiredPagesLen)-len(s.pages))...)
+			}
+			s.pages = s.pages[:requiredPagesLen]
+			copy(s.pages[addedPagesLen:], s.pages)
+			for i := 0; i < addedPagesLen; i++ {
 				s.pages[i] = nil
 			}
-			s.minPageIndex -= addedLen
+			s.minPageIndex -= addedPagesLen
+			s.emptyPageMinPos += addedPagesLen
 		}
 	} else {
 		// Extends s.pages right.
-		s.pages = append(s.pages, make([][]float64, s.newPagesLen(pageIndex-s.minPageIndex+1)-len(s.pages))...)
+		requiredPagesLen := pageIndex - s.minPageIndex + 1
+		if requiredPagesLen > cap(s.pages) {
+			s.pages = append(s.pages, make([][]float64, s.newPagesCap(requiredPagesLen)-len(s.pages))...)
+		}
+		s.pages = s.pages[:requiredPagesLen]
 	}
 
-	page := &s.pages[pageIndex-s.minPageIndex]
-	if len(*page) == 0 {
-		*page = append(*page, make([]float64, pageLen)...)
-	}
-	return *page
+	i := pageIndex - s.minPageIndex
+	s.makePage(i)
+	return s.pages[i]
 }
 
-func (s *BufferedPaginatedStore) newPagesLen(required int) int {
+func (s *BufferedPaginatedStore) makePage(i int) {
+	pageLen := 1 << s.pageLenLog2
+
+	if len(s.pages[i]) > 0 {
+		// No need to do anything, the page exists.
+		return
+	}
+	if s.pages[i] != nil {
+		// The page is empty (but allocated).
+		s.pages[i] = append(s.pages[i], make([]float64, pageLen)...)
+		return
+	}
+
+	// Look for an already allocated page (see Clear()).
+	for ; s.emptyPageMinPos < len(s.pages); s.emptyPageMinPos++ {
+		if s.pages[s.emptyPageMinPos] != nil && len(s.pages[s.emptyPageMinPos]) == 0 {
+			s.pages[i] = append(s.pages[s.emptyPageMinPos], make([]float64, pageLen)...)
+			// We know that s.emptyPageMinPos != i.
+			s.pages[s.emptyPageMinPos] = nil
+			s.emptyPageMinPos++
+			return
+		}
+	}
+
+	// Allocate a new page.
+	s.pages[i] = make([]float64, pageLen)
+}
+
+func (s *BufferedPaginatedStore) newPagesCap(required int) int {
 	// Grow in size by multiples of 64 bytes
 	pageGrowthIncrement := 64 * 8 / ptrSize
 	return (required + pageGrowthIncrement - 1) & -pageGrowthIncrement
@@ -526,15 +560,36 @@ func (s *BufferedPaginatedStore) Copy() Store {
 		minPageIndex:               s.minPageIndex,
 		pageLenLog2:                s.pageLenLog2,
 		pageLenMask:                s.pageLenMask,
+		emptyPageMinPos:            len(pagesCopy),
 	}
 }
 
 func (s *BufferedPaginatedStore) Clear() {
 	s.buffer = s.buffer[:0]
-	for i := range s.pages {
-		s.pages[i] = s.pages[i][:0]
+	// Empty pages and move them to the head of s.pages so as to reuse already
+	// allocated memory.
+	j := 0
+	for i, page := range s.pages {
+		if page != nil {
+			s.pages[i] = nil
+			s.pages[j] = page[:0]
+			j++
+		}
 	}
+	// Trim s.pages; only keep enough to track empty pages.
+	s.pages = s.pages[:j]
+	s.emptyPageMinPos = 0
 	s.minPageIndex = maxInt
+}
+
+func (s *BufferedPaginatedStore) memorySize() (size uint) {
+	size += uint(reflect.TypeOf(s).Elem().Size())
+	size += uint(cap(s.buffer)) * uint(reflect.TypeOf(s.buffer).Elem().Size())
+	size += uint(cap(s.pages)) * uint(reflect.TypeOf(s.pages).Elem().Size())
+	for _, page := range s.pages {
+		size += uint(cap(page)) * uint(reflect.TypeOf(page).Elem().Size())
+	}
+	return
 }
 
 func (s *BufferedPaginatedStore) ToProto() *sketchpb.Store {
