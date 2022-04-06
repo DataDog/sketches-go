@@ -1,3 +1,5 @@
 sketches-go.iml
 .idea/
 vendor/
+/**/coverprofile.out
+/**/*.test
