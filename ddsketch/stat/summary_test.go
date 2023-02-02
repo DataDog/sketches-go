@@ -14,27 +14,27 @@ import (
 
 func TestFromData(t *testing.T) {
 	{
-		_, err := NewSummaryStatisticsFromData(0.0, 0.0, math.Inf(1), math.Inf(-1))
+		_, err := NewSummaryStatisticsFromData(0.0, 0.0, math.Inf(1), math.Inf(-1), 0.0)
 		assert.NoError(t, err)
 	}
 	{
-		_, err := NewSummaryStatisticsFromData(1.0, 2.0, 3.0, 3.0)
+		_, err := NewSummaryStatisticsFromData(1.0, 2.0, 3.0, 3.0, 0.0)
 		assert.NoError(t, err)
 	}
 	{
-		_, err := NewSummaryStatisticsFromData(1.0, 2.0, 3.0, 4.0)
+		_, err := NewSummaryStatisticsFromData(1.0, 2.0, 3.0, 4.0, 0.0)
 		assert.NoError(t, err)
 	}
 	{
-		_, err := NewSummaryStatisticsFromData(0.0, 0.0, 0.0, 0.0)
+		_, err := NewSummaryStatisticsFromData(0.0, 0.0, 0.0, 0.0, 0.0)
 		assert.Error(t, err)
 	}
 	{
-		_, err := NewSummaryStatisticsFromData(-1.0, 0.0, 0.0, 0.0)
+		_, err := NewSummaryStatisticsFromData(-1.0, 0.0, 0.0, 0.0, 0.0)
 		assert.Error(t, err)
 	}
 	{
-		_, err := NewSummaryStatisticsFromData(1.0, 0.0, 1.0, 0.0)
+		_, err := NewSummaryStatisticsFromData(1.0, 0.0, 1.0, 0.0, 0.0)
 		assert.Error(t, err)
 	}
 }
@@ -166,6 +166,7 @@ func assertEmpty(t *testing.T, s *SummaryStatistics) {
 	assert.Equal(t, 0.0, s.Sum(), "sum")
 	assert.Equal(t, math.Inf(1), s.Min(), "min")
 	assert.Equal(t, math.Inf(-1), s.Max(), "max")
+	assert.Equal(t, 0.0, s.Variance(), "variance")
 }
 
 func assertEqual(t *testing.T, s1 *SummaryStatistics, s2 *SummaryStatistics) {
@@ -173,4 +174,5 @@ func assertEqual(t *testing.T, s1 *SummaryStatistics, s2 *SummaryStatistics) {
 	assert.Equal(t, s1.Sum(), s2.Sum(), "sum")
 	assert.Equal(t, s1.Min(), s2.Min(), "min")
 	assert.Equal(t, s1.Max(), s2.Max(), "max")
+	assert.Equal(t, s1.Variance(), s2.Variance(), "variance")
 }

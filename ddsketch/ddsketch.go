@@ -33,6 +33,7 @@ type quantileSketch interface {
 	GetCount() float64
 	GetZeroCount() float64
 	GetSum() float64
+	GetVariance() float64
 	GetPositiveValueStore() store.Store
 	GetNegativeValueStore() store.Store
 	GetMinValue() (float64, error)
@@ -260,15 +261,27 @@ func (s *DDSketch) GetSum() (sum float64) {
 	return sum
 }
 
+// GetVariance returns an approximation of the sum of squares based on the tracked mean.
+func (s *DDSketch) GetVariance() float64 {
+	mean := s.GetSum() / s.GetCount()
+	sums := 0.0
+	s.ForEach(func(value float64, count float64) (stop bool) {
+		ss := (value * count) - mean
+		sums += ss * ss
+		return false
+	})
+	return sums / s.GetCount()
+}
+
 // GetPositiveValueStore returns the store.Store object that contains the positive
 // values of the sketch.
-func (s *DDSketch) GetPositiveValueStore() (store.Store) {
+func (s *DDSketch) GetPositiveValueStore() store.Store {
 	return s.positiveValueStore
 }
 
 // GetNegativeValueStore returns the store.Store object that contains the negative
 // values of the sketch.
-func (s *DDSketch) GetNegativeValueStore() (store.Store) {
+func (s *DDSketch) GetNegativeValueStore() store.Store {
 	return s.negativeValueStore
 }
 
@@ -503,7 +516,7 @@ func (s *DDSketch) Reweight(w float64) error {
 // DDSketchWithExactSummaryStatistics returns exact count, sum, min and max, as
 // opposed to DDSketch, which may return approximate values for those
 // statistics. Because of the need to track them exactly, adding and merging
-// operations are slightly more exepensive than those of DDSketch.
+// operations are slightly more expensive than those of DDSketch.
 type DDSketchWithExactSummaryStatistics struct {
 	*DDSketch
 	summaryStatistics *stat.SummaryStatistics
@@ -557,15 +570,19 @@ func (s *DDSketchWithExactSummaryStatistics) GetSum() float64 {
 	return s.summaryStatistics.Sum()
 }
 
+func (s *DDSketchWithExactSummaryStatistics) GetVariance() float64 {
+	return s.summaryStatistics.Variance()
+}
+
 // GetPositiveValueStore returns the store.Store object that contains the positive
 // values of the sketch.
-func (s *DDSketchWithExactSummaryStatistics) GetPositiveValueStore() (store.Store) {
+func (s *DDSketchWithExactSummaryStatistics) GetPositiveValueStore() store.Store {
 	return s.DDSketch.positiveValueStore
 }
 
 // GetNegativeValueStore returns the store.Store object that contains the negative
 // values of the sketch.
-func (s *DDSketchWithExactSummaryStatistics) GetNegativeValueStore() (store.Store) {
+func (s *DDSketchWithExactSummaryStatistics) GetNegativeValueStore() store.Store {
 	return s.DDSketch.negativeValueStore
 }
 

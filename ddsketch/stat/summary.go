@@ -20,6 +20,7 @@ type SummaryStatistics struct {
 	simpleSum       float64
 	min             float64
 	max             float64
+	variance        float64
 }
 
 func NewSummaryStatistics() *SummaryStatistics {
@@ -30,11 +31,12 @@ func NewSummaryStatistics() *SummaryStatistics {
 		simpleSum:       0,
 		min:             math.Inf(1),
 		max:             math.Inf(-1),
+		variance:        0,
 	}
 }
 
 // NewSummaryStatisticsFromData constructs SummaryStatistics from the provided data.
-func NewSummaryStatisticsFromData(count, sum, min, max float64) (*SummaryStatistics, error) {
+func NewSummaryStatisticsFromData(count, sum, min, max, variance float64) (*SummaryStatistics, error) {
 	if !(count >= 0) {
 		return nil, fmt.Errorf("count (%g) must be positive or zero", count)
 	}
@@ -51,6 +53,7 @@ func NewSummaryStatisticsFromData(count, sum, min, max float64) (*SummaryStatist
 		simpleSum:       sum,
 		min:             min,
 		max:             max,
+		variance:        variance,
 	}, nil
 }
 
@@ -76,6 +79,10 @@ func (s *SummaryStatistics) Min() float64 {
 
 func (s *SummaryStatistics) Max() float64 {
 	return s.max
+}
+
+func (s *SummaryStatistics) Variance() float64 {
+	return s.variance
 }
 
 func (s *SummaryStatistics) Add(value, count float64) {
@@ -157,6 +164,7 @@ func (s *SummaryStatistics) Clear() {
 	s.simpleSum = 0
 	s.min = math.Inf(1)
 	s.max = math.Inf(-1)
+	s.variance = 0
 }
 
 func (s *SummaryStatistics) Copy() *SummaryStatistics {
@@ -167,5 +175,6 @@ func (s *SummaryStatistics) Copy() *SummaryStatistics {
 		simpleSum:       s.simpleSum,
 		min:             s.min,
 		max:             s.max,
+		variance:        s.variance,
 	}
 }
