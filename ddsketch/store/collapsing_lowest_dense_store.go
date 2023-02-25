@@ -102,7 +102,7 @@ func (s *CollapsingLowestDenseStore) extendRange(newMinIndex, newMaxIndex int) {
 func (s *CollapsingLowestDenseStore) adjust(newMinIndex, newMaxIndex int) {
 	if newMaxIndex-newMinIndex+1 > len(s.bins) {
 		// The range of indices is too wide, buckets of lowest indices need to be collapsed.
-		newMinIndex = newMaxIndex - len(s.bins) + 1
+		newMinIndex = newMaxIndex - len(s.bins)
 		if newMinIndex >= s.maxIndex {
 			// There will be only one non-empty bucket.
 			s.bins = make([]float64, len(s.bins))
