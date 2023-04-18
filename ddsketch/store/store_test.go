@@ -300,6 +300,23 @@ func TestMergeFuzzy(t *testing.T) {
 	}
 }
 
+func TestMergeAfterClear(t *testing.T) {
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			s1 := testCase.newStore()
+			s2 := testCase.newStore()
+
+			for i := 0; i < 1000; i++ {
+				s2.Add(i)
+			}
+			s2.Clear()
+
+			s1.MergeWith(s2)
+			s2.MergeWith(s1)
+		})
+	}
+}
+
 func testStore(t *testing.T, store Store, normalizedBins []Bin) {
 	assertEncodeBins(t, store, normalizedBins)
 	testCopy(t, store, normalizedBins)
