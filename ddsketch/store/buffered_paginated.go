@@ -379,6 +379,9 @@ func (s *BufferedPaginatedStore) MergeWith(other Store) {
 	if ok && s.pageLenLog2 == o.pageLenLog2 {
 		// Merge pages.
 		for oPageOffset, oPage := range o.pages {
+			if len(oPage) == 0 {
+				continue
+			}
 			oPageIndex := o.minPageIndex + oPageOffset
 			page := s.page(oPageIndex, true)
 			for i, oCount := range oPage {
