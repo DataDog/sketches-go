@@ -327,9 +327,6 @@ func FromProtoWithStoreProvider(pb *sketchpb.DDSketch, storeProvider store.Provi
 	if pb.NegativeValues != nil {
 		store.MergeWithProto(negativeValueStore, pb.NegativeValues)
 	}
-	if pb.Mapping == nil {
-		return nil, errors.New("Cannot create ddsketch from proto with nil index mapping.")
-	}
 	m, err := mapping.FromProto(pb.Mapping)
 	if err != nil {
 		return nil, err
