@@ -6,9 +6,10 @@
 package mapping
 
 import (
-	"github.com/DataDog/sketches-go/ddsketch/encoding"
 	"math"
 	"testing"
+
+	"github.com/DataDog/sketches-go/ddsketch/encoding"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -107,6 +108,11 @@ func TestSerialization(t *testing.T) {
 	deserializedMapping, err := FromProto(m.ToProto())
 	assert.Nil(t, err)
 	assert.True(t, m.Equals(deserializedMapping))
+}
+
+func TestDeserializationNil(t *testing.T) {
+	_, err := FromProto(nil)
+	assert.EqualError(t, err, "cannot create IndexMapping from nil protobuf index mapping")
 }
 
 func TestEncodeDecodeEquality(t *testing.T) {
