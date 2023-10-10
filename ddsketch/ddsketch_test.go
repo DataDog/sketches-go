@@ -11,13 +11,13 @@ import (
 	"testing"
 
 	"github.com/DataDog/sketches-go/ddsketch/stat"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/DataDog/sketches-go/dataset"
 	"github.com/DataDog/sketches-go/ddsketch/mapping"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 	"github.com/DataDog/sketches-go/ddsketch/store"
 
-	"github.com/golang/protobuf/proto"
 	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/assert"
 )
