@@ -6,10 +6,11 @@
 package ddsketch
 
 import (
-	"github.com/DataDog/sketches-go/ddsketch/stat"
 	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/DataDog/sketches-go/ddsketch/stat"
 
 	"github.com/DataDog/sketches-go/dataset"
 	"github.com/DataDog/sketches-go/ddsketch/mapping"
@@ -726,9 +727,10 @@ func TestBenchmarkEncodedSize(t *testing.T) {
 }
 
 type serTestCase struct {
-	name  string
-	ser   func(s *DDSketch, b *[]byte)
-	deser func(b []byte, s *DDSketch, p store.Provider)
+	name        string
+	ser         func(s *DDSketch, b *[]byte)
+	deser       func(b []byte, s *DDSketch, p store.Provider) error
+	expectedErr string
 }
 
 var serTestCases []serTestCase = []serTestCase{
@@ -738,13 +740,71 @@ var serTestCases []serTestCase = []serTestCase{
 			serialized, _ := proto.Marshal(s.ToProto())
 			*b = serialized
 		},
-		deser: func(b []byte, s *DDSketch, p store.Provider) {
+		deser: func(b []byte, s *DDSketch, p store.Provider) error {
 			var sketchPb sketchpb.DDSketch
 			proto.Unmarshal(b, &sketchPb)
 
-			serialized, _ := FromProtoWithStoreProvider(&sketchPb, p)
+			serialized, err := FromProtoWithStoreProvider(&sketchPb, p)
 			*s = *serialized
+			return err
 		},
+	},
+	{
+		name: "proto_nil_positive_values",
+		ser: func(s *DDSketch, b *[]byte) {
+			s.positiveValueStore.Clear()
+			pb := s.ToProto()
+			pb.PositiveValues = nil
+			serialized, _ := proto.Marshal(pb)
+			*b = serialized
+		},
+		deser: func(b []byte, s *DDSketch, p store.Provider) error {
+			var sketchPb sketchpb.DDSketch
+			proto.Unmarshal(b, &sketchPb)
+
+			serialized, err := FromProtoWithStoreProvider(&sketchPb, p)
+			*s = *serialized
+			return err
+		},
+	},
+	{
+		name: "proto_nil_negative_values",
+		ser: func(s *DDSketch, b *[]byte) {
+			s.negativeValueStore.Clear()
+			pb := s.ToProto()
+			pb.NegativeValues = nil
+			serialized, _ := proto.Marshal(pb)
+			*b = serialized
+		},
+		deser: func(b []byte, s *DDSketch, p store.Provider) error {
+			var sketchPb sketchpb.DDSketch
+			proto.Unmarshal(b, &sketchPb)
+
+			serialized, err := FromProtoWithStoreProvider(&sketchPb, p)
+			*s = *serialized
+			return err
+		},
+	},
+	{
+		name: "proto_nil_mapping",
+		ser: func(s *DDSketch, b *[]byte) {
+			pb := s.ToProto()
+			pb.Mapping = nil
+			serialized, _ := proto.Marshal(pb)
+			*b = serialized
+		},
+		deser: func(b []byte, s *DDSketch, p store.Provider) error {
+			var sketchPb sketchpb.DDSketch
+			proto.Unmarshal(b, &sketchPb)
+
+			serialized, err := FromProtoWithStoreProvider(&sketchPb, p)
+			if err != nil {
+				return err
+			}
+			*s = *serialized
+			return nil
+		},
+		expectedErr: "cannot create IndexMapping from nil protobuf index mapping",
 	},
 	{
 		name: "custom",
@@ -752,9 +812,10 @@ var serTestCases []serTestCase = []serTestCase{
 			*b = []byte{}
 			s.Encode(b, false)
 		},
-		deser: func(b []byte, s *DDSketch, p store.Provider) {
-			sketch, _ := DecodeDDSketch(b, p, nil)
+		deser: func(b []byte, s *DDSketch, p store.Provider) error {
+			sketch, err := DecodeDDSketch(b, p, nil)
 			*s = *sketch
+			return err
 		},
 	},
 	{
@@ -763,9 +824,9 @@ var serTestCases []serTestCase = []serTestCase{
 			*b = (*b)[:0]
 			s.Encode(b, false)
 		},
-		deser: func(b []byte, s *DDSketch, p store.Provider) {
+		deser: func(b []byte, s *DDSketch, p store.Provider) error {
 			s.Clear()
-			s.DecodeAndMergeWith(b)
+			return s.DecodeAndMergeWith(b)
 		},
 	},
 }
@@ -777,14 +838,20 @@ func TestSerDeser(t *testing.T) {
 		store.SparseStoreConstructor,
 	}
 	for _, testCase := range dataTestCases {
-		sketch := NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
-		testCase.fillSketch(*sketch)
 		for _, serTestCase := range serTestCases {
-			var serialized []byte
-			serTestCase.ser(sketch, &serialized)
 			for _, storeProvider := range storeProviders {
+				sketch := NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
+				testCase.fillSketch(*sketch)
+
+				var serialized []byte
+				serTestCase.ser(sketch, &serialized)
+
 				deserialized := NewDDSketchFromStoreProvider(sketch.IndexMapping, storeProvider)
-				serTestCase.deser(serialized, deserialized, storeProvider)
+				err := serTestCase.deser(serialized, deserialized, storeProvider)
+				if serTestCase.expectedErr != "" {
+					assert.EqualError(t, err, serTestCase.expectedErr)
+					continue
+				}
 				assertSketchesEquivalent(t, sketch, deserialized)
 			}
 		}
