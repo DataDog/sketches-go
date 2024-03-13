@@ -5,5 +5,5 @@ go 1.15
 require (
 	github.com/google/gofuzz v1.2.0
 	github.com/stretchr/testify v1.6.1
-	google.golang.org/protobuf v1.28.0
+	google.golang.org/protobuf v1.33.0
 )
