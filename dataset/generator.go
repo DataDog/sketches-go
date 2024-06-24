@@ -65,3 +65,21 @@ func (g *Pareto) Generate() float64 {
 	r := rand.ExpFloat64() / g.shape
 	return math.Exp(math.Log(g.scale) + r)
 }
+
+// Linearly increasing stream, with zeroes once every 2 values.
+type LinearWithZeroes struct {
+	currentVal float64
+	count      int
+}
+
+func NewLinearWithZeroes() *LinearWithZeroes { return &LinearWithZeroes{0, 0} }
+
+func (g *LinearWithZeroes) Generate() float64 {
+	g.count++
+	if g.count%2 == 0 {
+		value := g.currentVal
+		g.currentVal++
+		return value
+	}
+	return 0
+}
