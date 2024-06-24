@@ -35,8 +35,11 @@ type testCase struct {
 }
 
 var (
+	// testSize=21 and testQuantiles=0.95 with the LinearWithZeroes generator exposes a bug if a
+	// "fused multiply and add" (FMA) operation is used in GetValueAtQuantile on ARM64, when the
+	// explicit floating point conversion is not used on the computed rank.
 	testQuantiles = []float64{0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.999, 1}
-	testSizes     = []int{3, 5, 10, 100, 1000}
+	testSizes     = []int{3, 5, 10, 21, 100, 1000}
 	testCases     = []testCase{
 		{
 			sketch: func() quantileSketch {
@@ -204,6 +207,15 @@ func TestLinear(t *testing.T) {
 		for _, n := range testSizes {
 			linearGenerator := dataset.NewLinear()
 			evaluateSketch(t, n, linearGenerator, testCase.sketch(), testCase)
+		}
+	}
+}
+
+func TestLinearWithZeroes(t *testing.T) {
+	for _, testCase := range testCases {
+		for _, n := range testSizes {
+			linearWithZeroesGenerator := dataset.NewLinearWithZeroes()
+			evaluateSketch(t, n, linearWithZeroesGenerator, testCase.sketch(), testCase)
 		}
 	}
 }
