@@ -327,7 +327,6 @@ func (s *DDSketch) EncodeProto(w io.Writer) {
 	})
 
 	builder.SetZeroCount(s.zeroCount)
-
 }
 
 // FromProto builds a new instance of DDSketch based on the provided protobuf representation, using a Dense store.
