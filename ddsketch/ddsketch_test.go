@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"math"
 	"math/rand"
-	"strings"
 	"testing"
 
 	"github.com/DataDog/sketches-go/ddsketch/stat"
@@ -730,9 +729,6 @@ var (
 func TestEncodingIsConsistent(t *testing.T) {
 	for _, testCase := range dataTestCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			if strings.Contains(testCase.name, "") {
-				return
-			}
 			sketch := NewDDSketch(testCase.indexMapping, testCase.storeProvider(), testCase.storeProvider())
 			testCase.fillSketch(*sketch)
 
