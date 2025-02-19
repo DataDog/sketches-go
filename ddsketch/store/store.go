@@ -53,7 +53,7 @@ type Store interface {
 	KeyAtRank(rank float64) int
 	MergeWith(store Store)
 	ToProto() *sketchpb.Store
-	EncodeProto(builder *sketchpb.StoreBuilder) // TODO: this can be private
+	EncodeProto(builder *sketchpb.StoreBuilder)
 	// Reweight multiplies all values from the store by w, but keeps the same global distribution.
 	Reweight(w float64) error
 	// Encode encodes the bins of the store and appends its content to the
