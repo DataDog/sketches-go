@@ -6,6 +6,8 @@
 package ddsketch
 
 import (
+	"bytes"
+	"github.com/stretchr/testify/require"
 	"math"
 	"math/rand"
 	"testing"
@@ -724,6 +726,27 @@ var (
 	}
 )
 
+func TestEncodingIsConsistent(t *testing.T) {
+	for _, testCase := range dataTestCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			sketch := NewDDSketch(testCase.indexMapping, testCase.storeProvider(), testCase.storeProvider())
+			testCase.fillSketch(*sketch)
+
+			var fastSketch sketchpb.DDSketch
+			var normalSketch *sketchpb.DDSketch
+
+			var buf bytes.Buffer
+			sketch.EncodeProto(&buf)
+			require.NoError(t, proto.Unmarshal(buf.Bytes(), &fastSketch))
+			proto.Unmarshal(buf.Bytes(), &fastSketch)
+
+			normalSketch = sketch.ToProto()
+
+			assert.True(t, proto.Equal(normalSketch, &fastSketch))
+		})
+	}
+}
+
 func TestBenchmarkEncodedSize(t *testing.T) {
 	t.Logf("%-45s %6s %6s %17s\n", "test case", "proto", "custom", "custom_no_mapping")
 	for _, testCase := range dataTestCases {
@@ -952,6 +975,39 @@ func BenchmarkEncode(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkStreamVsRegularEncode(b *testing.B) {
+
+	var err error
+	for _, testCase := range dataTestCases {
+		b.Run(testCase.name, func(b *testing.B) {
+
+			sketch := NewDDSketchFromStoreProvider(testCase.indexMapping, testCase.storeProvider)
+			testCase.fillSketch(*sketch)
+
+			b.Run("vanilla", func(b *testing.B) {
+				b.ReportAllocs()
+
+				for i := 0; i < b.N; i++ {
+					sinkBytes, err = proto.Marshal(sketch.ToProto())
+					require.NoError(b, err)
+				}
+			})
+
+			b.Run("gostreamer", func(b *testing.B) {
+				b.ReportAllocs()
+
+				output := bytes.NewBuffer(sinkBytes[:0])
+				for i := 0; i < b.N; i++ {
+					output.Reset()
+					sketch.EncodeProto(output)
+				}
+			})
+		})
+
+	}
+
 }
 
 func BenchmarkDecode(b *testing.B) {

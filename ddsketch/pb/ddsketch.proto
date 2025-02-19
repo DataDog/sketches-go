@@ -7,6 +7,8 @@ syntax = "proto3";
 
 option go_package = "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb";
 
+package test;
+
 // A DDSketch is essentially a histogram that partitions the range of positive values into an infinite number of
 // indexed bins whose size grows exponentially. It keeps track of the number of values (or possibly floating-point
 // weights) added to each bin. Negative values are partitioned like positive values, symmetrically to zero.
