@@ -176,37 +176,21 @@ func assertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch quantile
 			upperQuantile := data.UpperQuantile(q)
 			quantile, quantileErr := sketch.GetValueAtQuantile(q)
 			assert.Nil(quantileErr)
-
-			// t.Logf("dbg180: min:%f, max:%f, q:%f, quantile:%f, %T\n", expectedMinValue, expectedMaxValue, q, quantile, sketch)
-			// fmt.Printf("dbg180: min:%f, max:%f, q:%f, quantile:%f, %T\n", expectedMinValue, expectedMaxValue, q, quantile, sketch)
 			assertRelativelyAccurate(assert, alpha, lowerQuantile, upperQuantile, quantile)
 			assert.LessOrEqual(minValue, quantile)
 			assert.GreaterOrEqual(maxValue, quantile)
 			if exactSummaryStatistics {
-
-				// fmt.Printf("dbg180: min:%f, max:%f, q:%f, quantile:%f, lowerQuantile:%f, upperQuanile:%f,  count:%v, value:%v\n",
-				// 	expectedMinValue, expectedMaxValue, q, quantile, lowerQuantile, upperQuantile, data.Count, data.Values)
-
-				// assert.Equal(1, 0)
-				// t.Logf("dbg185: min:%f, max:%f, q:%f, quantile:%f, count:%v, value:%v, %T\n", expectedMinValue, expectedMaxValue, q, quantile, data.Count, data.Values, sketch)
-				// fmt.Printf("dbg185: min:%f, max:%f, q:%f, quantile:%f, count:%v, value:%v, %T\n", expectedMinValue, expectedMaxValue, q, quantile, data.Count, data.Values, sketch)
-				// assert.GreaterOrEqual(quantile, expectedMinValue)
-				// assert.LessOrEqual(quantile, expectedMaxValue)
 				if q == 0 {
 					assert.Equal(expectedMinValue, quantile)
 				} else if q == 1 {
 					assert.Equal(expectedMaxValue, quantile)
-					// if quantile != expectedMaxValue {
-					// 	t.Logf("quantile: %f, expectedMaxValue: %f\n", quantile, expectedMaxValue)
-					// }
 				}
 			}
-
-			// quantiles, quantilesErr := sketch.GetValuesAtQuantiles([]float64{q, q})
-			// assert.Nil(quantilesErr)
-			// assert.Len(quantiles, 2)
-			// assert.Equal(quantile, quantiles[0])
-			// assert.Equal(quantile, quantiles[1])
+			quantiles, quantilesErr := sketch.GetValuesAtQuantiles([]float64{q, q})
+			assert.Nil(quantilesErr)
+			assert.Len(quantiles, 2)
+			assert.Equal(quantile, quantiles[0])
+			assert.Equal(quantile, quantiles[1])
 		}
 	}
 }
@@ -241,24 +225,6 @@ func TestLinearWithZeroes(t *testing.T) {
 		for _, n := range testSizes {
 			linearWithZeroesGenerator := dataset.NewLinearWithZeroes()
 			evaluateSketch(t, n, linearWithZeroesGenerator, testCase.sketch(), testCase)
-		}
-	}
-}
-
-func TestOneMaxWithZeros(t *testing.T) {
-	for _, testCase := range testCases {
-		for _, n := range testSizes {
-			oneMaxWithZerosGenerator := dataset.NewOneMaxWithZeros()
-			evaluateSketch(t, n, oneMaxWithZerosGenerator, testCase.sketch(), testCase)
-		}
-	}
-}
-
-func TestThreeVals(t *testing.T) {
-	for _, testCase := range testCases {
-		for _, n := range testSizes {
-			generator := dataset.NewThreeVals()
-			evaluateSketch(t, n, generator, testCase.sketch(), testCase)
 		}
 	}
 }

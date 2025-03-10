@@ -83,31 +83,3 @@ func (g *LinearWithZeroes) Generate() float64 {
 	}
 	return 0
 }
-
-// One max value and remaining are zeros.
-type OneMaxWithZeros struct {
-	count int
-}
-
-func NewOneMaxWithZeros() *OneMaxWithZeros { return &OneMaxWithZeros{} }
-
-func (g *OneMaxWithZeros) Generate() float64 {
-	g.count++
-	if g.count <= 1 {
-		return 1000.0
-	}
-	return 0.0
-}
-
-// One max value and remaining are zeros.
-type ThreeVals struct {
-	count int
-}
-
-func NewThreeVals() *ThreeVals { return &ThreeVals{} }
-
-func (g *ThreeVals) Generate() float64 {
-	g.count++
-	vals := []float64{1, 3, 5}
-	return vals[g.count%len(vals)]
-}

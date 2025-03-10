@@ -614,15 +614,12 @@ func (s *DDSketchWithExactSummaryStatistics) GetValueAtQuantile(quantile float64
 	value, err := s.DDSketch.GetValueAtQuantile(quantile)
 	min := s.summaryStatistics.Min()
 	if quantile == 0 || quantile < 1 && value < min {
-		// fmt.Printf("dbg620: quantile:%f, returning min:%f\n", quantile, min)
 		return min, err
 	}
 	max := s.summaryStatistics.Max()
 	if quantile == 1 || value > max {
-		// fmt.Printf("dbg622: quantile:%f, returning max:%f\n", quantile, max)
 		return max, err
 	}
-	// fmt.Printf("dbg624: quantile:%f, returning value:%f\n", quantile, value)
 	return value, err
 }
 
@@ -632,10 +629,8 @@ func (s *DDSketchWithExactSummaryStatistics) GetValuesAtQuantiles(quantiles []fl
 	max := s.summaryStatistics.Max()
 	for i := range values {
 		if quantiles[i] == 0 || quantiles[i] < 1 && values[i] < min {
-			// fmt.Printf("dbg640: [%d]: quantiles[i]:%f, values[i]:%f, min:%v\n", i, quantiles[i], values[i], min)
 			values[i] = min
 		} else if quantiles[i] == 1 || values[i] > max {
-			// fmt.Printf("dbg642: [%d]: quantiles[i]:%f, values[i]:%f, max:%v\n", i, quantiles[i], values[i], max)
 			values[i] = max
 		}
 	}
