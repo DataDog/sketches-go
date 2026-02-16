@@ -1,4 +1,5 @@
 # sketches-go 
+[![Go Reference](https://pkg.go.dev/badge/github.com/DataDog/sketches-go/ddsketch.svg)](https://pkg.go.dev/github.com/DataDog/sketches-go/ddsketch)
 
 This repo contains Go implementations of the distributed quantile sketch algorithm
 DDSketch [1]. DDSketch has relative-error guarantees for any quantile q in [0, 1].
