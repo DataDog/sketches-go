@@ -7,10 +7,11 @@ package ddsketch
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/require"
 	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/sketches-go/ddsketch/stat"
 	"google.golang.org/protobuf/proto"
@@ -1028,4 +1029,46 @@ func BenchmarkDecode(b *testing.B) {
 			}
 		})
 	}
+}
+
+func FuzzDecodeDDSketch(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte, constructor int, m int) {
+		var storeProvider store.Provider
+		switch constructor {
+		case 0:
+			// Use a dense store
+			storeProvider = store.DenseStoreConstructor
+		case 1:
+			// Use a sparse store
+			storeProvider = store.SparseStoreConstructor
+		case 2:
+			// Use a buffered paginated store
+			storeProvider = store.BufferedPaginatedStoreConstructor
+		default:
+			t.Skip("Unknown store provider")
+		}
+
+		var indexMapping mapping.IndexMapping
+		switch m {
+		case 0:
+			indexMapping, _ = mapping.NewCubicallyInterpolatedMapping(0.01)
+		case 1:
+			indexMapping, _ = mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
+		case 2:
+			indexMapping, _ = mapping.NewLogarithmicMapping(0.01)
+		case 3:
+			indexMapping, _ = mapping.NewLogarithmicMappingWithGamma(0.01, 0)
+		case 4:
+			indexMapping, _ = mapping.NewLinearlyInterpolatedMapping(0.01)
+		case 5:
+			indexMapping, _ = mapping.NewLinearlyInterpolatedMappingWithGamma(0.01, 0)
+		default:
+			indexMapping = nil
+		}
+		_, _ = DecodeDDSketch(data, storeProvider, indexMapping)
+	})
+}
+
+func TestRegression(t *testing.T) {
+	_, _ = DecodeDDSketch([]byte("\x0f\x0f\u06dd\u06dd\xd0000"), store.DenseStoreConstructor, nil)
 }
