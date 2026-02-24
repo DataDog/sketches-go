@@ -7,10 +7,11 @@ package ddsketch
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/require"
 	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/sketches-go/ddsketch/stat"
 	"google.golang.org/protobuf/proto"
@@ -935,6 +936,108 @@ func clamp(q float64) float64 {
 	} else {
 		return q
 	}
+}
+
+// TestCountThresholdSameBucket_ZD2354669 verifies that when only value 1033 is inserted,
+// querying for any value within the same bucket returns count=1, while values outside
+// the bucket return count=0. This demonstrates that DDSketch provides approximate counts,
+// not exact counts for specific values.
+func TestCountThresholdSameBucket_ZD2354669(t *testing.T) {
+	// Create sketch with 1/128 relative accuracy (default used inside Datadog)
+	relativeAccuracy := 1.0 / 128.0
+	sketch, err := NewDefaultDDSketch(relativeAccuracy)
+	require.NoError(t, err)
+
+	// Insert only value 1033 (count of 1)
+	err = sketch.Add(1033.0)
+	require.NoError(t, err)
+
+	// Get the index (bucket) and bounds for 1033
+	index1033 := sketch.Index(1033.0)
+	lowerBound := sketch.LowerBound(index1033)
+	upperBound := sketch.LowerBound(index1033 + 1)
+
+	// Bucket should be around index 1786 with range [1030.834013, 1046.940794)
+	t.Logf("Value 1033 maps to index %d with range [%.6f, %.6f)", index1033, lowerBound, upperBound)
+
+	// Helper function to count values at a specific index
+	countAtIndex := func(idx int) float64 {
+		var count float64
+		sketch.GetPositiveValueStore().ForEach(func(storeIdx int, cnt float64) (stop bool) {
+			if storeIdx == idx {
+				count = cnt
+				return true
+			}
+			return false
+		})
+		return count
+	}
+
+	// Helper function to count values below a specific index
+	countBelowIndex := func(idx int) float64 {
+		var count float64
+		sketch.GetPositiveValueStore().ForEach(func(storeIdx int, cnt float64) (stop bool) {
+			if storeIdx < idx {
+				count += cnt
+			}
+			return false
+		})
+		return count
+	}
+
+	// Test all integer values within the bucket bounds (1031-1046)
+	t.Run("ValuesWithinBucket", func(t *testing.T) {
+		for testValue := 1031; testValue <= 1046; testValue++ {
+			val := float64(testValue)
+
+			// Verify this value is within the bucket bounds
+			assert.True(t, val >= lowerBound && val < upperBound,
+				"value %d should be within bucket [%f, %f)", testValue, lowerBound, upperBound)
+
+			// Verify it maps to the same index
+			indexTest := sketch.Index(val)
+			assert.Equal(t, index1033, indexTest, "value %d should map to the same index as 1033", testValue)
+
+			// Query for count at this value's index
+			countEq := countAtIndex(indexTest)
+			countBelow := countBelowIndex(indexTest)
+			totalCount := sketch.GetCount()
+
+			// Should return count of 1 since they're in the same bucket
+			assert.Equal(t, float64(1), totalCount, "total count should be 1 for value %d", testValue)
+			assert.Equal(t, float64(1), countEq, "countEq should be 1 for value %d (in same bucket)", testValue)
+			assert.Equal(t, float64(0), countBelow, "countBelow should be 0 for value %d", testValue)
+		}
+	})
+
+	// Test values immediately outside the bucket bounds
+	t.Run("ValuesOutsideBucket", func(t *testing.T) {
+		// Test 1030 (below the bucket)
+		val1030 := 1030.0
+		index1030 := sketch.Index(val1030)
+		assert.NotEqual(t, index1033, index1030, "1030 should NOT map to the same index as 1033")
+		assert.True(t, val1030 < lowerBound, "1030 should be below bucket lower bound %f", lowerBound)
+
+		countEq := countAtIndex(index1030)
+		countBelow := countBelowIndex(index1030)
+		totalCount := sketch.GetCount()
+
+		assert.Equal(t, float64(1), totalCount, "total count should be 1")
+		assert.Equal(t, float64(0), countEq, "countEq should be 0 for 1030 (different bucket)")
+		assert.Equal(t, float64(0), countBelow, "countBelow should be 0 for 1030 (our value is above it)")
+
+		// Test 1047 (above the bucket)
+		val1047 := 1047.0
+		index1047 := sketch.Index(val1047)
+		assert.NotEqual(t, index1033, index1047, "1047 should NOT map to the same index as 1033")
+		assert.True(t, val1047 >= upperBound, "1047 should be at or above bucket upper bound %f", upperBound)
+
+		countEq = countAtIndex(index1047)
+		countBelow = countBelowIndex(index1047)
+
+		assert.Equal(t, float64(0), countEq, "countEq should be 0 for 1047 (different bucket)")
+		assert.Equal(t, float64(1), countBelow, "countBelow should be 1 for 1047 (our value is below it)")
+	})
 }
 
 var (
