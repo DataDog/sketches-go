@@ -614,11 +614,11 @@ func (s *DDSketchWithExactSummaryStatistics) GetMaxValue() (float64, error) {
 func (s *DDSketchWithExactSummaryStatistics) GetValueAtQuantile(quantile float64) (float64, error) {
 	value, err := s.DDSketch.GetValueAtQuantile(quantile)
 	min := s.summaryStatistics.Min()
-	if value < min {
+	if quantile == 0 || quantile < 1 && value < min {
 		return min, err
 	}
 	max := s.summaryStatistics.Max()
-	if value > max {
+	if quantile == 1 || value > max {
 		return max, err
 	}
 	return value, err
@@ -629,9 +629,9 @@ func (s *DDSketchWithExactSummaryStatistics) GetValuesAtQuantiles(quantiles []fl
 	min := s.summaryStatistics.Min()
 	max := s.summaryStatistics.Max()
 	for i := range values {
-		if values[i] < min {
+		if quantiles[i] == 0 || quantiles[i] < 1 && values[i] < min {
 			values[i] = min
-		} else if values[i] > max {
+		} else if quantiles[i] == 1 || values[i] > max {
 			values[i] = max
 		}
 	}
