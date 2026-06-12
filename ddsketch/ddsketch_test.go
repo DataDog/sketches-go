@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/DataDog/sketches-go/dataset"
+	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/mapping"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 	"github.com/DataDog/sketches-go/ddsketch/store"
@@ -1049,26 +1050,113 @@ func FuzzDecodeDDSketch(f *testing.F) {
 		}
 
 		var indexMapping mapping.IndexMapping
+		var mappingErr error
 		switch m {
 		case 0:
-			indexMapping, _ = mapping.NewCubicallyInterpolatedMapping(0.01)
+			indexMapping, mappingErr = mapping.NewCubicallyInterpolatedMapping(0.01)
 		case 1:
-			indexMapping, _ = mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
+			indexMapping, mappingErr = mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
 		case 2:
-			indexMapping, _ = mapping.NewLogarithmicMapping(0.01)
+			indexMapping, mappingErr = mapping.NewLogarithmicMapping(0.01)
 		case 3:
-			indexMapping, _ = mapping.NewLogarithmicMappingWithGamma(0.01, 0)
+			indexMapping, mappingErr = mapping.NewLogarithmicMappingWithGamma(1.02, 0)
 		case 4:
-			indexMapping, _ = mapping.NewLinearlyInterpolatedMapping(0.01)
+			indexMapping, mappingErr = mapping.NewLinearlyInterpolatedMapping(0.01)
 		case 5:
-			indexMapping, _ = mapping.NewLinearlyInterpolatedMappingWithGamma(0.01, 0)
+			indexMapping, mappingErr = mapping.NewLinearlyInterpolatedMappingWithGamma(1.02, 0)
 		default:
+			indexMapping = nil
+		}
+		// A failed constructor returns a typed-nil pointer; reset to an untyped
+		// nil interface so we exercise the "no mapping provided" path rather than
+		// passing a non-nil interface wrapping a nil pointer.
+		if mappingErr != nil {
 			indexMapping = nil
 		}
 		_, _ = DecodeDDSketch(data, storeProvider, indexMapping)
 	})
 }
 
+// contiguousStorePayload builds a positive-store block encoded as N contiguous
+// bins, starting at firstIndex and spaced by indexDelta, with the given count
+// for each bin.
+func contiguousStorePayload(numBins uint64, firstIndex, indexDelta int64, count float64) []byte {
+	b := &[]byte{}
+	enc.EncodeFlag(b, enc.NewFlag(enc.FlagTypePositiveStore, enc.BinEncodingContiguousCounts))
+	enc.EncodeUvarint64(b, numBins)
+	enc.EncodeVarint64(b, firstIndex)
+	enc.EncodeVarint64(b, indexDelta)
+	for i := uint64(0); i < numBins; i++ {
+		enc.EncodeVarfloat64(b, count)
+	}
+	return *b
+}
+
+// contiguousStorePayloadClaiming builds a contiguous positive-store block whose
+// header claims declaredBins bins but only actually contains writtenBins counts,
+// modelling a payload that claims more bins than the buffer can hold.
+func contiguousStorePayloadClaiming(declaredBins uint64, writtenBins int) []byte {
+	b := &[]byte{}
+	enc.EncodeFlag(b, enc.NewFlag(enc.FlagTypePositiveStore, enc.BinEncodingContiguousCounts))
+	enc.EncodeUvarint64(b, declaredBins)
+	enc.EncodeVarint64(b, 0)
+	enc.EncodeVarint64(b, 1)
+	for i := 0; i < writtenBins; i++ {
+		enc.EncodeVarfloat64(b, 1)
+	}
+	return *b
+}
+
+// indexDeltasStorePayload builds a positive-store block encoded as index deltas
+// (each bin has a count of 1).
+func indexDeltasStorePayload(deltas ...int64) []byte {
+	b := &[]byte{}
+	enc.EncodeFlag(b, enc.NewFlag(enc.FlagTypePositiveStore, enc.BinEncodingIndexDeltas))
+	enc.EncodeUvarint64(b, uint64(len(deltas)))
+	for _, d := range deltas {
+		enc.EncodeVarint64(b, d)
+	}
+	return *b
+}
+
+// TestRegression covers crafted payloads, found by the fuzzer, that previously
+// made decoding allocate an enormous amount of memory (issue #85). Each payload
+// describes indexes outside the [MinInt32, MaxInt32] range that the index
+// mappings can produce, or claims more bins than the buffer can hold, so
+// decoding must reject them rather than try to grow a store to fit. The test
+// simply has to return promptly (rather than OOM) for every store type.
 func TestRegression(t *testing.T) {
-	_, _ = DecodeDDSketch([]byte("\x0f\x0f\u06dd\u06dd\xd0000"), store.DenseStoreConstructor, nil)
+	payloads := map[string][]byte{
+		// The exact payload reported in issue #85: a contiguous block whose first
+		// index (~-8.3e11) is far below MinInt32, which used to make an empty
+		// dense store allocate a slice spanning ~6.6 TB.
+		"issue #85": []byte("\x0f\x0f\u06dd\u06dd\xd0000"),
+		// A contiguous block whose first index is below MinInt32.
+		"contiguous first index below MinInt32": contiguousStorePayload(4, math.MinInt32-1, 1, 1),
+		// A contiguous block whose last index walks below MinInt32; this used to
+		// make a dense store grow incrementally to many GB before noticing.
+		"contiguous last index below MinInt32": contiguousStorePayload(48, 24, -50818767, 1),
+		// A contiguous block claiming far more bins than the buffer can hold.
+		"contiguous bin count exceeds buffer": contiguousStorePayloadClaiming(1<<20, 2),
+		// An index-deltas block that jumps far outside the int32 range.
+		"index deltas jump out of range": indexDeltasStorePayload(24, 24, -11307050960),
+		// A contiguous block whose indexes stay within int32 but span a far wider
+		// range than store.MaxDecodeIndexRange allows; rejected by that limit.
+		"contiguous span exceeds decode limit": contiguousStorePayload(2, 0, 1<<27, 1),
+	}
+	providers := map[string]store.Provider{
+		"dense":              store.DenseStoreConstructor,
+		"sparse":             store.SparseStoreConstructor,
+		"buffered_paginated": store.BufferedPaginatedStoreConstructor,
+	}
+	for providerName, provider := range providers {
+		for payloadName, payload := range payloads {
+			cp := append([]byte(nil), payload...)
+			// We only care that this returns without exhausting memory; the
+			// decoded value and any "invalid encoding" error are both fine.
+			if _, err := DecodeDDSketch(cp, provider, nil); err != nil {
+				t.Logf("%s / %s rejected: %v", providerName, payloadName, err)
+			}
+		}
+	}
 }

@@ -7,6 +7,8 @@ package store
 
 import (
 	"errors"
+	"math"
+
 	enc "github.com/DataDog/sketches-go/ddsketch/encoding"
 	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 )
@@ -28,7 +30,24 @@ const (
 var (
 	errUndefinedMinIndex = errors.New("MinIndex of empty store is undefined")
 	errUndefinedMaxIndex = errors.New("MaxIndex of empty store is undefined")
+	errInvalidEncoding   = errors.New("invalid store encoding")
 )
+
+// MaxDecodeIndexRange bounds the number of indexes (maxIndex − minIndex + 1)
+// that a store is allowed to span when decoding an encoded payload. Decoding
+// into a dense store allocates a slice covering its whole index range, so an
+// unbounded range lets a crafted payload trigger a huge allocation (see issue
+// #85); decoding a payload whose bins span a wider range returns an error
+// instead.
+//
+// The default is far larger than the range any realistic sketch produces — even
+// one that combines a very wide value range with high relative accuracy stays
+// orders of magnitude below it — while keeping the worst-case dense allocation
+// well away from memory-exhaustion territory (on the order of half a gigabyte).
+// Adjust it (ideally once, at startup) to trade off leniency against the
+// maximum allocation a single decode may cause; set it to 0 to disable the
+// check entirely and restore fully unbounded decoding.
+var MaxDecodeIndexRange uint64 = 1 << 26
 
 type Store interface {
 	Add(index int)
@@ -87,6 +106,88 @@ func MergeWithProto(store Store, pb *sketchpb.Store) {
 	}
 }
 
+// isValidIndex reports whether index is within the range that the index
+// mappings can produce. All mappings derive their min/max indexable values so
+// that indexes stay within [math.MinInt32, math.MaxInt32], so an index outside
+// that range can only come from a corrupt or crafted payload. Rejecting it
+// prevents such payloads from making a store (in particular an unbounded dense
+// one) allocate an enormous amount of memory. See issue #85.
+func isValidIndex(index int64) bool {
+	return index >= math.MinInt32 && index <= math.MaxInt32
+}
+
+// exceedsMaxDecodeIndexRange reports whether the inclusive index span
+// [minIndex, maxIndex] is wider than MaxDecodeIndexRange allows. Both bounds are
+// expected to be valid indexes (see isValidIndex), so their difference fits in a
+// uint64.
+func exceedsMaxDecodeIndexRange(minIndex, maxIndex int64) bool {
+	return MaxDecodeIndexRange != 0 && uint64(maxIndex-minIndex) >= MaxDecodeIndexRange
+}
+
+// indexRangeTracker tracks the smallest and largest index seen while decoding a
+// store's bins and reports when their span grows past MaxDecodeIndexRange. The
+// delta-based encodings allow arbitrary, non-monotonic jumps, so the span has to
+// be checked incrementally rather than from the block's extremes; doing so lets
+// a decoder bail out before a crafted payload makes a dense store allocate a
+// slice covering the whole span. The first observed index seeds both bounds.
+type indexRangeTracker struct {
+	minIndex, maxIndex int64
+	seeded             bool
+}
+
+// accept records index and reports whether the tracked span still fits within
+// MaxDecodeIndexRange. Callers should validate index with isValidIndex first.
+func (t *indexRangeTracker) accept(index int64) bool {
+	if !t.seeded {
+		t.minIndex, t.maxIndex, t.seeded = index, index, true
+	} else if index < t.minIndex {
+		t.minIndex = index
+	} else if index > t.maxIndex {
+		t.maxIndex = index
+	}
+	return !exceedsMaxDecodeIndexRange(t.minIndex, t.maxIndex)
+}
+
+// isDecodableContiguousBlock reports whether a contiguous block header is safe
+// to decode, the shared admission rule applied by every decoder before reading
+// the block's counts. A payload cannot describe more bins than the remaining
+// buffer can hold (each bin's count takes at least one byte), and every index
+// the block covers must be valid. The indexes are monotonic in the bin number,
+// so it is enough to check the two extremes; doing so up front lets a crafted
+// block be rejected before it makes a store grow incrementally to an enormous
+// size. The span is bounded against the maximum int32 range to keep the
+// multiplication overflow-free. See issue #85.
+func isDecodableContiguousBlock(remaining int, firstIndex int64, numBins uint64, indexDelta int64) bool {
+	if numBins > uint64(remaining) {
+		return false
+	}
+	if numBins == 0 {
+		return true
+	}
+	if !isValidIndex(firstIndex) {
+		return false
+	}
+	const maxInt32Span uint64 = math.MaxInt32 - math.MinInt32
+	steps := numBins - 1
+	absIndexDelta := uint64(indexDelta)
+	if indexDelta < 0 {
+		absIndexDelta = -uint64(indexDelta)
+	}
+	if steps != 0 && absIndexDelta > maxInt32Span/steps {
+		// The last index is necessarily outside the int32 range.
+		return false
+	}
+	lastIndex := firstIndex + int64(steps)*indexDelta
+	if !isValidIndex(lastIndex) {
+		return false
+	}
+	lo, hi := firstIndex, lastIndex
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	return !exceedsMaxDecodeIndexRange(lo, hi)
+}
+
 func DecodeAndMergeWith(s Store, b *[]byte, binEncodingMode enc.SubFlag) error {
 	switch binEncodingMode {
 
@@ -96,6 +197,7 @@ func DecodeAndMergeWith(s Store, b *[]byte, binEncodingMode enc.SubFlag) error {
 			return err
 		}
 		index := int64(0)
+		var indexRange indexRangeTracker
 		for i := uint64(0); i < numBins; i++ {
 			indexDelta, err := enc.DecodeVarint64(b)
 			if err != nil {
@@ -106,6 +208,9 @@ func DecodeAndMergeWith(s Store, b *[]byte, binEncodingMode enc.SubFlag) error {
 				return err
 			}
 			index += indexDelta
+			if !isValidIndex(index) || !indexRange.accept(index) {
+				return errInvalidEncoding
+			}
 			s.AddWithCount(int(index), count)
 		}
 
@@ -115,12 +220,16 @@ func DecodeAndMergeWith(s Store, b *[]byte, binEncodingMode enc.SubFlag) error {
 			return err
 		}
 		index := int64(0)
+		var indexRange indexRangeTracker
 		for i := uint64(0); i < numBins; i++ {
 			indexDelta, err := enc.DecodeVarint64(b)
 			if err != nil {
 				return err
 			}
 			index += indexDelta
+			if !isValidIndex(index) || !indexRange.accept(index) {
+				return errInvalidEncoding
+			}
 			s.Add(int(index))
 		}
 
@@ -136,6 +245,9 @@ func DecodeAndMergeWith(s Store, b *[]byte, binEncodingMode enc.SubFlag) error {
 		indexDelta, err := enc.DecodeVarint64(b)
 		if err != nil {
 			return err
+		}
+		if !isDecodableContiguousBlock(len(*b), index, numBins, indexDelta) {
+			return errInvalidEncoding
 		}
 		for i := uint64(0); i < numBins; i++ {
 			count, err := enc.DecodeVarfloat64(b)

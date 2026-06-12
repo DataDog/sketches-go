@@ -72,17 +72,26 @@ func (s *DenseStore) getNewLength(newMinIndex, newMaxIndex int) int {
 
 func (s *DenseStore) extendRange(newMinIndex, newMaxIndex int) {
 
-	newMinIndex = min(newMinIndex, s.minIndex)
-	newMaxIndex = max(newMaxIndex, s.maxIndex)
-
 	if s.IsEmpty() {
+		// The store is empty, so minIndex and maxIndex still hold their sentinel
+		// values (math.MaxInt32 / math.MinInt32). Folding them into the new range
+		// with min/max would only ever be a no-op for indexes that lie within the
+		// int32 bounds, but it produces a spurious, gigantic range for indexes
+		// that fall outside those bounds (e.g. decoded from a corrupt payload),
+		// leading to a huge allocation. Use the requested range as-is instead.
 		initialLength := s.getNewLength(newMinIndex, newMaxIndex)
 		s.bins = append(s.bins, make([]float64, initialLength)...)
 		s.offset = newMinIndex
 		s.minIndex = newMinIndex
 		s.maxIndex = newMaxIndex
 		s.adjust(newMinIndex, newMaxIndex)
-	} else if newMinIndex >= s.offset && newMaxIndex < s.offset+len(s.bins) {
+		return
+	}
+
+	newMinIndex = min(newMinIndex, s.minIndex)
+	newMaxIndex = max(newMaxIndex, s.maxIndex)
+
+	if newMinIndex >= s.offset && newMaxIndex < s.offset+len(s.bins) {
 		s.minIndex = newMinIndex
 		s.maxIndex = newMaxIndex
 	} else {

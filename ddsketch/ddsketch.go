@@ -437,9 +437,13 @@ func (s *DDSketch) decodeAndMergeWith(bb []byte, fallbackDecode func(b *[]byte, 
 		}
 		switch flag.Type() {
 		case enc.FlagTypePositiveStore:
-			s.positiveValueStore.DecodeAndMergeWith(b, flag.SubFlag())
+			if err := s.positiveValueStore.DecodeAndMergeWith(b, flag.SubFlag()); err != nil {
+				return err
+			}
 		case enc.FlagTypeNegativeStore:
-			s.negativeValueStore.DecodeAndMergeWith(b, flag.SubFlag())
+			if err := s.negativeValueStore.DecodeAndMergeWith(b, flag.SubFlag()); err != nil {
+				return err
+			}
 		case enc.FlagTypeIndexMapping:
 			decodedIndexMapping, err := mapping.Decode(b, flag)
 			if err != nil {
