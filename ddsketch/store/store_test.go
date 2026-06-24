@@ -1159,3 +1159,61 @@ func size(t *testing.T, store Store) uintptr {
 	}
 	return 0
 }
+
+// TestDecodeIndexRangeLimit verifies that MaxDecodeIndexRange bounds the index
+// span a store will accept while decoding, regardless of the bin encoding, and
+// that the check can be widened or disabled.
+func TestDecodeIndexRangeLimit(t *testing.T) {
+	defer func(prev uint64) { MaxDecodeIndexRange = prev }(MaxDecodeIndexRange)
+
+	encodeContiguous := func(numBins uint64, firstIndex, indexDelta int64) []byte {
+		b := &[]byte{}
+		enc.EncodeFlag(b, enc.NewFlag(enc.FlagTypePositiveStore, enc.BinEncodingContiguousCounts))
+		enc.EncodeUvarint64(b, numBins)
+		enc.EncodeVarint64(b, firstIndex)
+		enc.EncodeVarint64(b, indexDelta)
+		for i := uint64(0); i < numBins; i++ {
+			enc.EncodeVarfloat64(b, 1)
+		}
+		return *b
+	}
+	encodeDeltas := func(deltas ...int64) []byte {
+		b := &[]byte{}
+		enc.EncodeFlag(b, enc.NewFlag(enc.FlagTypePositiveStore, enc.BinEncodingIndexDeltas))
+		enc.EncodeUvarint64(b, uint64(len(deltas)))
+		for _, d := range deltas {
+			enc.EncodeVarint64(b, d)
+		}
+		return *b
+	}
+
+	decode := func(payload []byte) error {
+		b := append([]byte(nil), payload...)
+		flag, err := enc.DecodeFlag(&b)
+		if err != nil {
+			return err
+		}
+		return NewDenseStore().DecodeAndMergeWith(&b, flag.SubFlag())
+	}
+
+	// Both blocks span 201 indexes (0..200), all within the int32 range.
+	payloads := map[string][]byte{
+		"contiguous":  encodeContiguous(201, 0, 1),
+		"indexDeltas": encodeDeltas(0, 200),
+	}
+
+	MaxDecodeIndexRange = 100
+	for name, payload := range payloads {
+		assert.Errorf(t, decode(payload), "%s: span 201 should exceed limit 100", name)
+	}
+
+	MaxDecodeIndexRange = 1000
+	for name, payload := range payloads {
+		assert.NoErrorf(t, decode(payload), "%s: span 201 should fit within limit 1000", name)
+	}
+
+	MaxDecodeIndexRange = 0 // disabled
+	for name, payload := range payloads {
+		assert.NoErrorf(t, decode(payload), "%s: span should be accepted when the limit is disabled", name)
+	}
+}

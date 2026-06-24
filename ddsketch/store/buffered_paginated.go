@@ -624,6 +624,7 @@ func (s *BufferedPaginatedStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.
 		}
 		remaining := int(numBins)
 		index := int64(0)
+		var indexRange indexRangeTracker
 		// Process indexes in batches to avoid checking after each insertion
 		// whether compaction should happen.
 		for {
@@ -634,6 +635,9 @@ func (s *BufferedPaginatedStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.
 					return err
 				}
 				index += indexDelta
+				if !isValidIndex(index) || !indexRange.accept(index) {
+					return errInvalidEncoding
+				}
 				s.buffer = append(s.buffer, int(index))
 			}
 			remaining -= batchSize
@@ -655,6 +659,11 @@ func (s *BufferedPaginatedStore) DecodeAndMergeWith(b *[]byte, encodingMode enc.
 		indexDelta, err := enc.DecodeVarint64(b)
 		if err != nil {
 			return err
+		}
+		// Reject crafted block headers before reading counts so they cannot make
+		// the store allocate an enormous number of pages (issue #85).
+		if !isDecodableContiguousBlock(len(*b), indexOffset, numBins, indexDelta) {
+			return errInvalidEncoding
 		}
 		pageLen := 1 << s.pageLenLog2
 		for i := uint64(0); i < numBins; {
