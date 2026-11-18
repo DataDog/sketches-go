@@ -174,3 +174,35 @@ func assertEqual(t *testing.T, s1 *SummaryStatistics, s2 *SummaryStatistics) {
 	assert.Equal(t, s1.Min(), s2.Min(), "min")
 	assert.Equal(t, s1.Max(), s2.Max(), "max")
 }
+
+func TestSumCompensation(t *testing.T) {
+	// 2^53 + 1 is not representable: the 1 is lost when it is added to the
+	// running sum and recorded in the compensation term. The compensation must
+	// not be applied with the wrong sign, which would make the sum of these two
+	// positive values (2^53 - 1) smaller than one of them.
+	s := NewSummaryStatistics()
+	s.Add(1<<53, 1)
+	s.Add(1, 1)
+	assert.Equal(t, float64(1<<53), s.Sum(), "sum")
+}
+
+func TestMergeWithSumCompensation(t *testing.T) {
+	s1 := NewSummaryStatistics()
+	s1.Add(1<<53, 1)
+	s1.Add(1, 1)
+	s2 := NewSummaryStatistics()
+	s2.Add(1, 1)
+
+	// The exact sum 2^53 + 2 is representable, and is what adding all the values
+	// to a single SummaryStatistics yields.
+	s := NewSummaryStatistics()
+	s.Add(1<<53, 1)
+	s.Add(1, 1)
+	s.Add(1, 1)
+	assert.Equal(t, float64(1<<53+2), s.Sum(), "sum")
+
+	merged := NewSummaryStatistics()
+	merged.MergeWith(s1)
+	merged.MergeWith(s2)
+	assert.Equal(t, float64(1<<53+2), merged.Sum(), "merged sum")
+}
