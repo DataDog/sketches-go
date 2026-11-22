@@ -485,6 +485,22 @@ func TestErrors(t *testing.T) {
 	assert.Equal(t, ErrNegativeCount, sketch.AddWithCount(1, -1))
 }
 
+func TestNaNQuantile(t *testing.T) {
+	sketch, _ := LogUnboundedDenseDDSketch(0.01)
+	require.NoError(t, sketch.Add(0))
+	require.NoError(t, sketch.Add(0))
+
+	_, err := sketch.GetValueAtQuantile(math.NaN())
+	assert.Error(t, err)
+	_, err = sketch.GetValuesAtQuantiles([]float64{0.5, math.NaN()})
+	assert.Error(t, err)
+
+	exact, _ := NewDefaultDDSketchWithExactSummaryStatistics(0.01)
+	require.NoError(t, exact.Add(0))
+	_, err = exact.GetValueAtQuantile(math.NaN())
+	assert.Error(t, err)
+}
+
 func TestDecodingErrors(t *testing.T) {
 	mapping1, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.02, 0)
 	mapping2, _ := mapping.NewCubicallyInterpolatedMappingWithGamma(1.04, 0)
