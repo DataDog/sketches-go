@@ -164,7 +164,7 @@ func (s *DDSketch) Clear() {
 // Return the value at the specified quantile. Return a non-nil error if the quantile is invalid
 // or if the sketch is empty.
 func (s *DDSketch) GetValueAtQuantile(quantile float64) (float64, error) {
-	if quantile < 0 || quantile > 1 {
+	if !(quantile >= 0 && quantile <= 1) {
 		return math.NaN(), errors.New("The quantile must be between 0 and 1.")
 	}
 
