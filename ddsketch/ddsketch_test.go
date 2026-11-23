@@ -24,6 +24,7 @@ import (
 
 	fuzz "github.com/google/gofuzz"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -181,6 +182,13 @@ func assertSketchesAccurate(t *testing.T, data *dataset.Dataset, sketch quantile
 			assertRelativelyAccurate(assert, alpha, lowerQuantile, upperQuantile, quantile)
 			assert.LessOrEqual(minValue, quantile)
 			assert.GreaterOrEqual(maxValue, quantile)
+			if exactSummaryStatistics {
+				if q == 0 {
+					assert.Equal(expectedMinValue, quantile)
+				} else if q == 1 {
+					assert.Equal(expectedMaxValue, quantile)
+				}
+			}
 			quantiles, quantilesErr := sketch.GetValuesAtQuantiles([]float64{q, q})
 			assert.Nil(quantilesErr)
 			assert.Len(quantiles, 2)
