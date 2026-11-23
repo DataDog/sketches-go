@@ -60,7 +60,7 @@ func (s *SummaryStatistics) Count() float64 {
 
 func (s *SummaryStatistics) Sum() float64 {
 	// Better error bounds to add both terms as the final sum
-	tmp := s.sum + s.sumCompensation
+	tmp := s.sum - s.sumCompensation
 	if math.IsNaN(tmp) && math.IsInf(s.simpleSum, 0) {
 		// If the compensated sum is spuriously NaN from accumulating one or more same-signed infinite
 		// values, return the correctly-signed infinity stored in simpleSum.
@@ -101,7 +101,7 @@ func (s *SummaryStatistics) AddToSum(addend float64) {
 func (s *SummaryStatistics) MergeWith(o *SummaryStatistics) {
 	s.count += o.count
 	s.sumWithCompensation(o.sum)
-	s.sumWithCompensation(o.sumCompensation)
+	s.sumWithCompensation(-o.sumCompensation)
 	s.simpleSum += o.simpleSum
 	if o.min < s.min {
 		s.min = o.min
