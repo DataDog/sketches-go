@@ -22,6 +22,7 @@ var (
 	ErrUntrackableTooLow  = errors.New("input value is too low and cannot be tracked by the sketch")
 	ErrUntrackableTooHigh = errors.New("input value is too high and cannot be tracked by the sketch")
 	ErrNegativeCount      = errors.New("count cannot be negative")
+	ErrNaNCount           = errors.New("count cannot be NaN")
 	errEmptySketch        = errors.New("no such element exists")
 	errUnknownFlag        = errors.New("unknown encoding flag")
 )
@@ -124,6 +125,9 @@ func (s *DDSketch) Add(value float64) error {
 func (s *DDSketch) AddWithCount(value, count float64) error {
 	if count < 0 {
 		return ErrNegativeCount
+	}
+	if math.IsNaN(count) {
+		return ErrNaNCount
 	}
 
 	if value > s.MinIndexableValue() {
@@ -516,6 +520,9 @@ func changeStoreMapping(oldMapping, newMapping mapping.IndexMapping, oldStore, n
 // Reweight multiplies all values from the sketch by w, but keeps the same global distribution.
 // w has to be strictly greater than 0.
 func (s *DDSketch) Reweight(w float64) error {
+	if math.IsNaN(w) {
+		return errors.New("can't reweight by a NaN factor")
+	}
 	if w <= 0 {
 		return errors.New("can't reweight by a negative factor")
 	}

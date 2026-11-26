@@ -485,6 +485,43 @@ func TestErrors(t *testing.T) {
 	assert.Equal(t, ErrNegativeCount, sketch.AddWithCount(1, -1))
 }
 
+func TestNaNCount(t *testing.T) {
+	sketch, _ := LogUnboundedDenseDDSketch(0.01)
+	require.NoError(t, sketch.Add(1))
+
+	assert.Equal(t, ErrNaNCount, sketch.AddWithCount(2, math.NaN()))
+	assert.Equal(t, ErrNaNCount, sketch.AddWithCount(0, math.NaN()))
+	assert.Equal(t, ErrNaNCount, sketch.AddWithCount(-3, math.NaN()))
+	assert.Equal(t, 1.0, sketch.GetCount())
+	assert.Equal(t, 0.0, sketch.GetZeroCount())
+	assert.False(t, math.IsNaN(sketch.GetSum()))
+	v, err := sketch.GetValueAtQuantile(0.5)
+	require.NoError(t, err)
+	assert.InDelta(t, 1.0, v, 0.01)
+
+	exact, _ := NewDefaultDDSketchWithExactSummaryStatistics(0.01)
+	require.NoError(t, exact.Add(1))
+	assert.Equal(t, ErrNaNCount, exact.AddWithCount(2, math.NaN()))
+	assert.Equal(t, 1.0, exact.GetCount())
+	assert.Equal(t, 1.0, exact.GetSum())
+}
+
+func TestNaNReweight(t *testing.T) {
+	sketch, _ := LogUnboundedDenseDDSketch(0.01)
+	require.NoError(t, sketch.Add(0))
+	require.NoError(t, sketch.Add(1))
+
+	assert.Error(t, sketch.Reweight(math.NaN()))
+	assert.Equal(t, 2.0, sketch.GetCount())
+	assert.Equal(t, 1.0, sketch.GetZeroCount())
+
+	exact, _ := NewDefaultDDSketchWithExactSummaryStatistics(0.01)
+	require.NoError(t, exact.Add(1))
+	assert.Error(t, exact.Reweight(math.NaN()))
+	assert.Equal(t, 1.0, exact.GetCount())
+	assert.Equal(t, 1.0, exact.GetSum())
+}
+
 func TestNaNQuantile(t *testing.T) {
 	sketch, _ := LogUnboundedDenseDDSketch(0.01)
 	require.NoError(t, sketch.Add(0))
